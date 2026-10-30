@@ -3,12 +3,12 @@
 # AnonBot Uninstaller
 # ==============================================================================
 set -euo pipefail
-[[ $EUID -ne 0 ]] && { echo "❌ لطفاً با sudo اجرا کنید."; exit 1; }
+[[ $EUID -ne 0 ]] && { echo "[ERROR] Please run with sudo or as root."; exit 1; }
 
-read -r -p "⚠️ آیا از حذف سرویس AnonBot مطمئن هستید؟ [y/N]: " CONFIRM < /dev/tty
+read -r -p "[!] Are you sure you want to uninstall the AnonBot service? [y/N]: " CONFIRM < /dev/tty
 [[ "${CONFIRM,,}" != "y" ]] && exit 0
 
-read -r -p "❓ آیا دیتابیس، تنظیمات (/etc/anonbot) و بک‌آپ‌ها نیز کامل پاک شوند؟ [y/N]: " PURGE < /dev/tty
+read -r -p "[?] Also purge database (/var/lib/anonbot), keys (/etc/anonbot) and backups? [y/N]: " PURGE < /dev/tty
 
 systemctl stop anonbot.service 2>/dev/null || true
 systemctl disable anonbot.service 2>/dev/null || true
@@ -19,7 +19,7 @@ rm -rf /opt/anonbot /var/log/anonbot
 if [[ "${PURGE,,}" == "y" ]]; then
   rm -rf /etc/anonbot /var/lib/anonbot /var/backups/anonbot
   id "anonbot" &>/dev/null && userdel "anonbot" 2>/dev/null || true
-  echo "✅ سرویس، فایل‌ها و دیتابیس به طور کامل حذف شدند."
+  echo "[OK] Service, application files, database, and keys completely removed."
 else
-  echo "✅ سرویس حذف شد. دیتابیس (/var/lib/anonbot) و کلیدها (/etc/anonbot) حفظ شدند."
+  echo "[OK] Service removed. Database (/var/lib/anonbot) and keys (/etc/anonbot) were preserved."
 fi

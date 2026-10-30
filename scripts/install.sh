@@ -40,13 +40,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ $EUID -ne 0 ]] && { echo -e "${RED}❌ لطفاً با دسترسی root یا sudo اجرا کنید.${NC}"; exit 1; }
+[[ $EUID -ne 0 ]] && { echo -e "${RED}[ERROR] Please run this installer as root or with sudo.${NC}"; exit 1; }
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}   🚀 نصب‌کننده سریع ربات صندوق پیام ناشناس (AnonBot)       ${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}============================================================${NC}"
+echo -e "${CYAN}   AnonBot Multi-Inbox Telegram Bot - Fast Installer        ${NC}"
+echo -e "${CYAN}============================================================${NC}"
 
-# ۱. جمع‌آوری تنظیمات (سریع با پیش‌فرض‌های هوشمند + گزینه پیشرفته)
+# 1. Collect Configuration
 PROXY_ENABLED="false"; PROXY_URL="$CLI_PROXY_URL"; USE_PROXY_FOR_INSTALL="n"
 API_BASE_URL="$CLI_API_BASE_URL"; BOT_TOKEN="$CLI_TOKEN"; BOT_USERNAME=""
 SUPER_ADMINS="$CLI_ADMIN_ID"; DB_TYPE="$CLI_DB_TYPE"
@@ -56,61 +56,61 @@ WEBHOOK_HOST="${CLI_WEBHOOK_HOST:-https://bot.example.com}"
 FORCE_CHANNEL="$CLI_FORCE_CHANNEL"
 
 if [[ "$NON_INTERACTIVE" == false ]]; then
-  read -r -p "۱) آیا برای اتصال به تلگرام نیاز به پروکسی (SOCKS5/HTTP) دارید؟ [y/N]: " NEED_PROXY < /dev/tty
+  read -r -p "1) Use proxy (SOCKS5/HTTP) for Telegram API? [y/N]: " NEED_PROXY < /dev/tty
   if [[ "${NEED_PROXY,,}" == "y" ]]; then
-    read -r -p "   آدرس پروکسی (مثال socks5://user:pass@127.0.0.1:1080): " PROXY_URL < /dev/tty
+    read -r -p "   Proxy URL (e.g. socks5://user:pass@127.0.0.1:1080): " PROXY_URL < /dev/tty
     [[ -n "$PROXY_URL" ]] && PROXY_ENABLED="true"
-    read -r -p "   استفاده از همین پروکسی برای دانلود پکیج‌ها و گیت‌هاب؟ [y/N]: " USE_PROXY_FOR_INSTALL < /dev/tty
+    read -r -p "   Also use this proxy for GitHub & pip downloads? [y/N]: " USE_PROXY_FOR_INSTALL < /dev/tty
   fi
 
   while true; do
-    read -r -p "۲) توکن ربات تلگرام (@BotFather): " BOT_TOKEN < /dev/tty
+    read -r -p "2) Telegram Bot Token (@BotFather): " BOT_TOKEN < /dev/tty
     [[ -z "$BOT_TOKEN" ]] && continue
     CHECK_BASE="${API_BASE_URL:-https://api.telegram.org}"
     CURL_ARGS=(-sS --max-time 15)
     [[ "$PROXY_ENABLED" == "true" && -n "$PROXY_URL" ]] && CURL_ARGS+=(-x "$PROXY_URL")
-    echo -e "${YELLOW}⏳ در حال تست توکن با getMe...${NC}"
+    echo -e "${YELLOW}[*] Verifying token via getMe...${NC}"
     RESP=$(curl "${CURL_ARGS[@]}" "${CHECK_BASE}/bot${BOT_TOKEN}/getMe" || true)
     if echo "$RESP" | grep -q '"ok":true'; then
       BOT_USERNAME=$(echo "$RESP" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
-      echo -e "${GREEN}✅ توکن تایید شد: @${BOT_USERNAME}${NC}"
+      echo -e "${GREEN}[OK] Verified bot: @${BOT_USERNAME}${NC}"
       break
     else
-      echo -e "${RED}❌ خطا در تایید توکن یا اتصال شبکه: ${RESP}${NC}"
-      read -r -p "   ادامه بدون تست؟ [y/N]: " SKIP_CHECK < /dev/tty
+      echo -e "${RED}[!] Token verification failed: ${RESP}${NC}"
+      read -r -p "   Continue without verification? [y/N]: " SKIP_CHECK < /dev/tty
       [[ "${SKIP_CHECK,,}" == "y" ]] && break
     fi
   done
 
   while [[ -z "$SUPER_ADMINS" ]]; do
-    read -r -p "۳) آیدی عددی ادمین کل (مثلاً 123456789): " SUPER_ADMINS < /dev/tty
+    read -r -p "3) Super Admin Telegram User ID (e.g. 123456789): " SUPER_ADMINS < /dev/tty
   done
 
-  read -r -p "۴) تنظیمات پیشرفته (MySQL / Redis / Webhook / جوین اجباری)؟ [y/N - پیش‌فرض: SQLite + Polling]: " ADV_CHOICE < /dev/tty
+  read -r -p "4) Configure advanced options (MySQL / Redis / Webhook / Force-Join)? [y/N - Default: SQLite + Polling]: " ADV_CHOICE < /dev/tty
   if [[ "${ADV_CHOICE,,}" == "y" ]]; then
-    read -r -p "   نوع دیتابیس [1=SQLite پیش‌فرض, 2=MySQL]: " DB_CHOICE < /dev/tty
+    read -r -p "   Database Type [1=SQLite (default), 2=MySQL]: " DB_CHOICE < /dev/tty
     if [[ "$DB_CHOICE" == "2" ]]; then
       DB_TYPE="mysql"
-      read -r -p "   میزبان MySQL [127.0.0.1]: " M_HOST < /dev/tty; M_HOST="${M_HOST:-127.0.0.1}"
-      read -r -p "   پورت MySQL [3306]: " M_PORT < /dev/tty; M_PORT="${M_PORT:-3306}"
-      read -r -p "   نام دیتابیس [anonbot]: " M_DB < /dev/tty; M_DB="${M_DB:-anonbot}"
-      read -r -p "   نام کاربری MySQL [anonbot]: " M_USER < /dev/tty; M_USER="${M_USER:-anonbot}"
-      read -r -s -p "   رمز عبور MySQL: " M_PASS < /dev/tty; echo ""
+      read -r -p "   MySQL Host [127.0.0.1]: " M_HOST < /dev/tty; M_HOST="${M_HOST:-127.0.0.1}"
+      read -r -p "   MySQL Port [3306]: " M_PORT < /dev/tty; M_PORT="${M_PORT:-3306}"
+      read -r -p "   MySQL Database Name [anonbot]: " M_DB < /dev/tty; M_DB="${M_DB:-anonbot}"
+      read -r -p "   MySQL Username [anonbot]: " M_USER < /dev/tty; M_USER="${M_USER:-anonbot}"
+      read -r -s -p "   MySQL Password: " M_PASS < /dev/tty; echo ""
       DATABASE_URL="mysql+aiomysql://${M_USER}:${M_PASS}@${M_HOST}:${M_PORT}/${M_DB}?charset=utf8mb4"
     fi
-    read -r -p "   آدرس Redis اختیاری (خالی=حافظه/دیتابیس): " REDIS_URL < /dev/tty
-    read -r -p "   سرور Bot API سفارشی (خالی=پیش‌فرض تلگرام): " API_BASE_URL < /dev/tty
+    read -r -p "   Optional Redis URL (leave empty for memory/DB fallback): " REDIS_URL < /dev/tty
+    read -r -p "   Custom Bot API Server URL (leave empty for default): " API_BASE_URL < /dev/tty
     if [[ "$PROXY_ENABLED" == "false" ]]; then
-      read -r -p "   حالت اجرا [1=Polling پیش‌فرض, 2=Webhook]: " MODE_CHOICE < /dev/tty
+      read -r -p "   Run Mode [1=Polling (default), 2=Webhook]: " MODE_CHOICE < /dev/tty
       if [[ "$MODE_CHOICE" == "2" ]]; then
         RUN_MODE="webhook"
-        read -r -p "   دامنه HTTPS وب‌هوک (مثال https://bot.domain.com): " WEBHOOK_HOST < /dev/tty
+        read -r -p "   Webhook HTTPS Base URL (e.g. https://bot.domain.com): " WEBHOOK_HOST < /dev/tty
       fi
     fi
-    read -r -p "   یوزرنیم کانال جوین اجباری اولیه (مثال @MyChannel یا خالی): " FORCE_CHANNEL < /dev/tty
+    read -r -p "   Initial Force-Join Channel (e.g. @MyChannel or leave empty): " FORCE_CHANNEL < /dev/tty
   fi
 else
-  [[ -z "$BOT_TOKEN" || -z "$SUPER_ADMINS" ]] && { echo -e "${RED}❌ در حالت غیرتعاملی --token و --admin-id الزامی است.${NC}"; exit 1; }
+  [[ -z "$BOT_TOKEN" || -z "$SUPER_ADMINS" ]] && { echo -e "${RED}[ERROR] --token and --admin-id are required in non-interactive mode.${NC}"; exit 1; }
   [[ -n "$PROXY_URL" ]] && PROXY_ENABLED="true"
   [[ "$DB_TYPE" == "mysql" && -n "$CLI_MYSQL_DSN" ]] && DATABASE_URL="$CLI_MYSQL_DSN"
 fi
@@ -119,8 +119,8 @@ if [[ "${USE_PROXY_FOR_INSTALL,,}" == "y" && -n "$PROXY_URL" ]]; then
   export http_proxy="$PROXY_URL" https_proxy="$PROXY_URL" ALL_PROXY="$PROXY_URL"
 fi
 
-# ۲. نصب پیش‌نیازهای سیستم و ساخت کاربر/پوشه‌ها
-echo -e "${YELLOW}📦 در حال نصب پکیج‌های پایه سیستم و آماده‌سازی دایرکتوری‌ها...${NC}"
+# 2. Install OS Packages & Prepare Directories
+echo -e "${YELLOW}[*] Installing system packages and preparing directories...${NC}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-dev build-essential curl tar sqlite3 openssl
@@ -128,7 +128,7 @@ apt-get install -y -qq python3 python3-venv python3-dev build-essential curl tar
 id "$APP_USER" &>/dev/null || useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "$APP_DIR" "$ETC_DIR" "$VAR_DIR" "$LOG_DIR" "$BACKUP_DIR"
 
-# ۳. دریافت سورس پروژه (از دایرکتوری فعلی یا دانلود مستقیم از گیت‌هاب)
+# 3. Fetch Application Source (Local directory or GitHub Tarball)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR=""
 if [[ -f "${SCRIPT_DIR}/requirements.txt" && -d "${SCRIPT_DIR}/app" ]]; then
@@ -136,7 +136,7 @@ if [[ -f "${SCRIPT_DIR}/requirements.txt" && -d "${SCRIPT_DIR}/app" ]]; then
 elif [[ -f "$(dirname "$SCRIPT_DIR")/requirements.txt" && -d "$(dirname "$SCRIPT_DIR")/app" ]]; then
   SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
 else
-  echo -e "${YELLOW}🌐 در حال دانلود آخرین نسخه از گیت‌هاب (${GITHUB_REPO})...${NC}"
+  echo -e "${YELLOW}[*] Downloading latest release from GitHub (${GITHUB_REPO})...${NC}"
   TMP_DL=$(mktemp -d)
   DL_ARGS=(-fsSL --max-time 60)
   [[ "${USE_PROXY_FOR_INSTALL,,}" == "y" && -n "$PROXY_URL" ]] && DL_ARGS+=(-x "$PROXY_URL")
@@ -150,7 +150,7 @@ else
   elif [[ -f "${EXTRACTED}/anonbot/requirements.txt" ]]; then
     SOURCE_DIR="${EXTRACTED}/anonbot"
   else
-    echo -e "${RED}❌ فایل‌های پروژه در آرشیو گیت‌هاب یافت نشد.${NC}"
+    echo -e "${RED}[ERROR] Project files not found in downloaded GitHub archive.${NC}"
     rm -rf "$TMP_DL"; exit 1
   fi
 fi
@@ -161,15 +161,15 @@ cp "${SOURCE_DIR}/requirements.txt" "${SOURCE_DIR}/alembic.ini" "${SOURCE_DIR}/.
 [[ -f "${SOURCE_DIR}/uninstall.sh" ]] && cp "${SOURCE_DIR}/uninstall.sh" "$APP_DIR/"
 [[ -n "${TMP_DL:-}" && -d "${TMP_DL:-}" ]] && rm -rf "$TMP_DL"
 
-# ۴. ساخت Virtualenv (مطابق PEP 668 در Ubuntu 24.04) و نصب وابستگی‌ها
-echo -e "${YELLOW}🐍 در حال ساخت محیط مجازی و نصب کتابخانه‌های پایتون...${NC}"
+# 4. Create Isolated Virtualenv (PEP 668 compliant on Ubuntu 24.04)
+echo -e "${YELLOW}[*] Creating Python virtual environment and installing dependencies...${NC}"
 [[ ! -d "$VENV_DIR" ]] && python3 -m venv "$VENV_DIR"
 PIP_ARGS=(--quiet --upgrade)
 [[ "${USE_PROXY_FOR_INSTALL,,}" == "y" && -n "$PROXY_URL" ]] && PIP_ARGS+=(--proxy "$PROXY_URL")
 "${VENV_DIR}/bin/pip" install "${PIP_ARGS[@]}" pip wheel setuptools
 "${VENV_DIR}/bin/pip" install "${PIP_ARGS[@]}" -r "${APP_DIR}/requirements.txt"
 
-# ۵. تولید کلیدهای رمزنگاری (با حفظ کلیدهای قبلی در صورت نصب مجدد)
+# 5. Generate Cryptographic Keys (Preserve existing keys on re-install)
 EXISTING_HMAC=""; EXISTING_FERNET=""
 if [[ -f "$ENV_FILE" ]]; then
   EXISTING_HMAC=$(grep -E '^HMAC_SECRET=' "$ENV_FILE" | cut -d'=' -f2- || true)
@@ -213,25 +213,26 @@ EOF
 chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$ETC_DIR" "$VAR_DIR" "$LOG_DIR" "$BACKUP_DIR"
 chmod 600 "$ENV_FILE"
 
-# ۶. اجرای مایگریشن دیتابیس و ثبت کانال جوین اجباری اولیه
-echo -e "${YELLOW}🗄 در حال ساخت جداول دیتابیس...${NC}"
+# 6. Run Database Migrations & Seed Initial Force-Join Channel
+echo -e "${YELLOW}[*] Running Alembic database migrations...${NC}"
 (cd "$APP_DIR" && ANONBOT_ENV_FILE="$ENV_FILE" "${VENV_DIR}/bin/alembic" upgrade head)
 chown -R "${APP_USER}:${APP_USER}" "$VAR_DIR"
 
 if [[ -n "$FORCE_CHANNEL" ]]; then
-  ANONBOT_ENV_FILE="$ENV_FILE" "${VENV_DIR}/bin/python" - "$FORCE_CHANNEL" <<'PYEOF'
+  ANONBOT_ENV_FILE="$ENV_FILE" PYTHONPATH="$APP_DIR" "${VENV_DIR}/bin/python" - "$FORCE_CHANNEL" <<'PYEOF'
 import asyncio, sys
-from app.db.session import AsyncSessionLocal
-from app.db.repositories import ForceJoinRepo
+from app.db.session import get_session_factory
+from app.db.models import ForcedChannel
 async def main(ch):
-    async with AsyncSessionLocal() as s:
-        await ForceJoinRepo.add_channel(s, ch, ch, f"https://t.me/{ch.lstrip('@')}")
+    factory = get_session_factory()
+    async with factory() as s:
+        s.add(ForcedChannel(chat_id=ch, title=ch, invite_link=f"https://t.me/{ch.lstrip('@')}", is_active=True))
         await s.commit()
 asyncio.run(main(sys.argv[1]))
 PYEOF
 fi
 
-# ۷. نصب ابزار CLI (anonbot) و سرویس systemd
+# 7. Install CLI Wrapper & Enable systemd Service
 cat > /usr/local/bin/anonbot <<'EOF'
 #!/usr/bin/env bash
 export ANONBOT_ENV_FILE="/etc/anonbot/.env"
@@ -246,10 +247,10 @@ systemctl enable anonbot.service >/dev/null 2>&1
 systemctl restart anonbot.service
 sleep 2
 
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}🎉 نصب و راه‌اندازی AnonBot با موفقیت کامل شد!${NC}"
-echo -e "   • وضعیت سرویس : $(systemctl is-active anonbot.service)"
-echo -e "   • مدیریت ربات : ${CYAN}sudo anonbot${NC}"
-echo -e "   • بررسی سلامت : ${CYAN}sudo anonbot doctor${NC}"
-echo -e "   • آپدیت گیت‌هاب: ${CYAN}sudo anonbot update${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}============================================================${NC}"
+echo -e "${GREEN}[SUCCESS] AnonBot installed and started successfully!${NC}"
+echo -e "  * Service Status : $(systemctl is-active anonbot.service)"
+echo -e "  * Control Panel  : ${CYAN}sudo anonbot${NC}"
+echo -e "  * Health Check   : ${CYAN}sudo anonbot doctor${NC}"
+echo -e "  * GitHub Update  : ${CYAN}sudo anonbot update${NC}"
+echo -e "${GREEN}============================================================${NC}"
