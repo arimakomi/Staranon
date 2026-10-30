@@ -65,12 +65,6 @@
 curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/scripts/install.sh -o /tmp/install_anonbot.sh && sudo bash /tmp/install_anonbot.sh
 ```
 
-*(اگر فایل‌ها داخل پوشه `anonbot` در مخزن گیت‌هاب شما قرار دارند، می‌توانید از لینک زیر نیز استفاده کنید؛ اسکریپت به صورت خودکار هر دو ساختار را تشخیص می‌دهد)*:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/anonbot/scripts/install.sh -o /tmp/install_anonbot.sh && sudo bash /tmp/install_anonbot.sh
-```
-
 ### ۲. نصب غیرتعاملی (مناسب اسکریپت‌های اتوماسیون و CI/CD)
 
 ```bash
@@ -248,7 +242,7 @@ sudo anonbot rollback
 ## 📂 ساختار پروژه
 
 ```text
-anonbot/
+staranon/
 ├── app/
 │   ├── bot.py                 # نقطه ورود اصلی (Polling با Backoff، Webhook و هندلر سراسری خطا)
 │   ├── config.py              # بارگذاری و اعتبارسنجی تنظیمات و کلیدهای امنیتی
