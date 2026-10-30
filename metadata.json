@@ -1,0 +1,6 @@
+{
+  "name": "AnonBot - ربات صندوق پیام ناشناس چندگانه",
+  "description": "پروژه کامل پایتون ربات تلگرام صندوق پیام ناشناس چندگانه با aiogram 3، SQLAlchemy 2، CLI مدیریتی و اسکریپت نصب Ubuntu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

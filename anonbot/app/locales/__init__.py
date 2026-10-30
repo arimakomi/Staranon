@@ -1,0 +1,1 @@
+"""Persian localization strings."""

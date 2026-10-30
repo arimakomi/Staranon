@@ -1,0 +1,1 @@
+"""AnonBot Management CLI package."""
