@@ -56,46 +56,30 @@
 
 ---
 
-## 🚀 راهنمای نصب از گیت‌هاب (`arimakomi/staranon`)
+## 🚀 راهنمای نصب سریع از گیت‌هاب (`arimakomi/staranon`)
 
-### ۱. نصب سریع با یک دستور (کپی‌پیست کردنی - بدون نیاز به git clone)
-کافی است دستور زیر را در ترمینال سرور اوبونتو خود کپی و اجرا کنید تا مستقیماً آخرین نسخه از گیت‌هاب دانلود و نصب شود:
+### ۱. نصب سریع با یک دستور کوتاه (کپی‌پیست کردنی)
+کافی است دستور کوتاه زیر را در ترمینال سرور اوبونتو خود اجرا کنید تا آخرین نسخه مستقیماً از گیت‌هاب دانلود و نصب شود:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/scripts/install.sh -o /tmp/install_anonbot.sh && sudo bash /tmp/install_anonbot.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh)
 ```
 
-### ۲. نصب غیرتعاملی (مناسب اسکریپت‌های اتوماسیون و CI/CD)
+### ۲. نصب غیرتعاملی (مناسب اتوماسیون)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/scripts/install.sh -o /tmp/install_anonbot.sh && \
-sudo bash /tmp/install_anonbot.sh --non-interactive \
+curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh | sudo bash -s -- \
+  --non-interactive \
   --token "1234567890:AAH_YourBotToken" \
-  --admin-id "123456789" \
-  --db-type sqlite \
-  --run-mode polling \
-  --proxy "socks5://user:pass@127.0.0.1:1080"
+  --admin-id "123456789"
 ```
 
-### ۳. نصب دستی
-```bash
-curl -fsSL https://github.com/arimakomi/staranon/archive/refs/heads/main.tar.gz -o /tmp/staranon.tar.gz
-mkdir -p /tmp/staranon && tar -xzf /tmp/staranon.tar.gz -C /tmp/staranon --strip-components=1
-cd /tmp/staranon
-sudo bash scripts/install.sh
-```
-
-### ۴. توضیح تمام سوال‌های نصب‌کننده (`install.sh`)
-هنگام اجرای تعاملی، اسکریپت به ترتیب سوالات زیر را می‌پرسد:
-1. **نیاز به پروکسی برای اتصال به تلگرام**: اگر سرور شما در شبکه‌ای است که به `api.telegram.org` دسترسی مستقیم ندارد، `y` بزنید و آدرس پروکسی `SOCKS5` یا `HTTP` را وارد کنید.
-2. **استفاده از پروکسی برای دانلود گیت‌هاب، `apt` و `pip`**: در صورت تمایل، دانلود پکیج‌ها نیز از طریق همان پروکسی انجام می‌شود.
-3. **سرور Bot API سفارشی**: اگر Local Bot API Server دارید آدرس آن را وارد کنید، در غیر این صورت `Enter` بزنید.
-4. **توکن ربات تلگرام**: توکن دریافتی از BotFather؛ اسکریپت بلافاصله با متد `getMe` توکن و اتصال شبکه را تست می‌کند.
-5. **آیدی عددی ادمین کل**: آیدی عددی اکانت تلگرام شما (برای چند ادمین با کاما جدا کنید: `11111,22222`).
-6. **نوع دیتابیس**: گزینه `1` برای SQLite پیش‌فرض (بدون نیاز به نصب سرویس جانبی) یا گزینه `2` برای MySQL.
-7. **آدرس Redis اختیاری**: در صورت داشتن Redis آدرس آن (`redis://127.0.0.1:6379/0`) را وارد کنید؛ اگر خالی بگذارید ربات به صورت خودکار با حافظه و دیتابیس کار می‌کند.
-8. **حالت اجرای ربات (Polling / Webhook)**: پیش‌فرض `Polling` است (در صورت فعال بودن پروکسی، Polling به صورت خودکار انتخاب می‌شود).
-9. **کانال جوین اجباری اولیه**: در صورت تمایل یوزرنیم کانال را وارد کنید یا `Enter` بزنید.
+### ۳. مراحل سوال‌های نصب‌کننده سریع (`install.sh`)
+برای سرعت بالا، اسکریپت در حالت پیش‌فرض فقط **۳ سوال اصلی** می‌پرسد:
+1. **نیاز به پروکسی (`SOCKS5` / `HTTP`)**: اگر سرور شما به تلگرام دسترسی مستقیم دارد فقط `Enter` بزنید.
+2. **توکن ربات تلگرام**: توکن دریافتی از `@BotFather` (بلافاصله با `getMe` تست می‌شود).
+3. **آیدی عددی ادمین کل**: آیدی عددی اکانت تلگرام شما.
+4. **تنظیمات پیشرفته (اختیاری)**: با زدن `Enter`، ربات بلافاصله با **SQLite + Polling** نصب و روشن می‌شود؛ و در صورت زدن `y` می‌توانید دیتابیس **MySQL**، **Redis**، **Webhook** یا **کانال جوین اجباری** را تنظیم کنید.
 
 ---
 
