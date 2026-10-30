@@ -1,6 +1,8 @@
 # 📬 ربات تلگرام صندوق پیام ناشناس چندگانه (AnonBot)
 
 یک سامانه کامل، امن و آماده بهره‌برداری (Production-Ready) برای راه‌اندازی ربات تلگرام **«صندوق پیام ناشناس چندگانه»** با زبان **Python 3.11+** و فریم‌ورک **aiogram 3.x**.
+- **مخزن گیت‌هاب پروژه**: [https://github.com/arimakomi/staranon](https://github.com/arimakomi/staranon)
+
 تمامی بخش‌های رابط کاربری، دکمه‌ها و پیام‌ها کاملاً فارسی هستند و هیچ‌گونه قابلیت چت تصادفی یا همسان‌گزینی (Matchmaking) در کد یا دیتابیس وجود ندارد.
 
 ---
@@ -54,25 +56,26 @@
 
 ---
 
-## 🚀 راهنمای نصب
+## 🚀 راهنمای نصب از گیت‌هاب (`arimakomi/staranon`)
 
-### ۱. نصب سریع با یک دستور (تعاملی)
-کافی است دستور زیر را در ترمینال سرور اوبونتو خود کپی و اجرا کنید:
+### ۱. نصب سریع با یک دستور (کپی‌پیست کردنی - بدون نیاز به git clone)
+کافی است دستور زیر را در ترمینال سرور اوبونتو خود کپی و اجرا کنید تا مستقیماً آخرین نسخه از گیت‌هاب دانلود و نصب شود:
 
 ```bash
-git clone https://github.com/your-org/anonbot.git /tmp/anonbot-installer && sudo bash /tmp/anonbot-installer/scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/scripts/install.sh -o /tmp/install_anonbot.sh && sudo bash /tmp/install_anonbot.sh
 ```
 
-یا اگر داخل پوشه پروژه هستید:
+*(اگر فایل‌ها داخل پوشه `anonbot` در مخزن گیت‌هاب شما قرار دارند، می‌توانید از لینک زیر نیز استفاده کنید؛ اسکریپت به صورت خودکار هر دو ساختار را تشخیص می‌دهد)*:
 
 ```bash
-sudo bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/anonbot/scripts/install.sh -o /tmp/install_anonbot.sh && sudo bash /tmp/install_anonbot.sh
 ```
 
 ### ۲. نصب غیرتعاملی (مناسب اسکریپت‌های اتوماسیون و CI/CD)
 
 ```bash
-sudo bash scripts/install.sh --non-interactive \
+curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/scripts/install.sh -o /tmp/install_anonbot.sh && \
+sudo bash /tmp/install_anonbot.sh --non-interactive \
   --token "1234567890:AAH_YourBotToken" \
   --admin-id "123456789" \
   --db-type sqlite \
@@ -80,10 +83,18 @@ sudo bash scripts/install.sh --non-interactive \
   --proxy "socks5://user:pass@127.0.0.1:1080"
 ```
 
-### ۳. توضیح تمام سوال‌های نصب‌کننده (`install.sh`)
+### ۳. نصب دستی
+```bash
+curl -fsSL https://github.com/arimakomi/staranon/archive/refs/heads/main.tar.gz -o /tmp/staranon.tar.gz
+mkdir -p /tmp/staranon && tar -xzf /tmp/staranon.tar.gz -C /tmp/staranon --strip-components=1
+cd /tmp/staranon
+sudo bash scripts/install.sh
+```
+
+### ۴. توضیح تمام سوال‌های نصب‌کننده (`install.sh`)
 هنگام اجرای تعاملی، اسکریپت به ترتیب سوالات زیر را می‌پرسد:
 1. **نیاز به پروکسی برای اتصال به تلگرام**: اگر سرور شما در شبکه‌ای است که به `api.telegram.org` دسترسی مستقیم ندارد، `y` بزنید و آدرس پروکسی `SOCKS5` یا `HTTP` را وارد کنید.
-2. **استفاده از پروکسی برای `apt` و `pip`**: در صورت تمایل، دانلود پکیج‌ها نیز از طریق همان پروکسی انجام می‌شود.
+2. **استفاده از پروکسی برای دانلود گیت‌هاب، `apt` و `pip`**: در صورت تمایل، دانلود پکیج‌ها نیز از طریق همان پروکسی انجام می‌شود.
 3. **سرور Bot API سفارشی**: اگر Local Bot API Server دارید آدرس آن را وارد کنید، در غیر این صورت `Enter` بزنید.
 4. **توکن ربات تلگرام**: توکن دریافتی از BotFather؛ اسکریپت بلافاصله با متد `getMe` توکن و اتصال شبکه را تست می‌کند.
 5. **آیدی عددی ادمین کل**: آیدی عددی اکانت تلگرام شما (برای چند ادمین با کاما جدا کنید: `11111,22222`).
@@ -193,7 +204,7 @@ sudo anonbot proxy remove
 
 ---
 
-## 💾 راهنمای بک‌آپ رمزنگاری‌شده، بازیابی و آپدیت
+## 💾 راهنمای بک‌آپ رمزنگاری‌شده، بازیابی و آپدیت مستقیم از گیت‌هاب
 
 > **🔐 نکته حیاتی امنیتی درباره بک‌آپ:**
 > فایل بک‌آپ تولیدشده توسط `anonbot db backup` علاوه بر دیتابیس، حاوی کلیدهای حیاتی **`FERNET_KEY`** و **`HMAC_SECRET`** نیز هست. بدون `FERNET_KEY` پس از ریستور، هیچ‌کدام از پیام‌های قدیمی قابل پاسخگویی یا حذف نخواهند بود. به همین دلیل کل فایل بک‌آپ با الگوریتم مشتق‌سازی کلید `PBKDF2-HMAC-SHA256 + Fernet` رمزنگاری می‌شود (`.tar.gz.enc`).
@@ -214,8 +225,10 @@ sudo anonbot db restore /var/backups/anonbot/anonbot_backup_20261030_120000.tar.
 # فعال‌سازی بک‌آپ خودکار روزانه (ساعت ۰۳:۰۰ بامداد)
 sudo anonbot db auto-backup --enable
 
-# آپدیت ربات به آخرین نسخه و بازگشت سریع در صورت بروز خطا
+# آپدیت مستقیم از گیت‌هاب (دانلود فایل فشرده main.tar.gz از arimakomi/staranon بدون git pull)
 sudo anonbot update
+
+# بازگشت سریع به نسخه قبلی (Rollback) در صورت بروز خطا
 sudo anonbot rollback
 ```
 
@@ -265,10 +278,10 @@ anonbot/
 ├── alembic/                   # مایگریشن‌های کامل دیتابیس
 ├── alembic.ini
 ├── cli/
-│   ├── main.py                # ابزار خط فرمان Typer + منوی تعاملی Rich
+│   ├── main.py                # ابزار خط فرمان Typer + منوی تعاملی Rich + آپدیت مستقیم از گیت‌هاب
 │   └── env_manager.py         # مدیریت فایل .env با حفظ دسترسی 600
 ├── scripts/
-│   ├── install.sh             # اسکریپت نصب خودکار Ubuntu 20.04/22.04/24.04
+│   ├── install.sh             # اسکریپت نصب خودکار Ubuntu 20.04/22.04/24.04 متصل به گیت‌هاب
 │   └── uninstall.sh           # اسکریپت حذف سرویس
 ├── systemd/
 │   └── anonbot.service        # فایل سرویس systemd با محدودیت‌های امنیتی

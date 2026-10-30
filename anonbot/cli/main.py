@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -59,6 +60,21 @@ app.add_typer(proxy_app, name="proxy")
 
 SECRET_ENV_KEYS = {"BOT_TOKEN", "HMAC_SECRET", "FERNET_KEY", "WEBHOOK_SECRET", "PROXY_URL", "DATABASE_URL"}
 SERVICE_NAME = "anonbot"
+GITHUB_REPO = "arimakomi/staranon"
+GITHUB_TARBALL_URL = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.tar.gz"
+CODE_ITEMS_TO_SYNC = [
+    "app",
+    "cli",
+    "alembic",
+    "scripts",
+    "systemd",
+    "tests",
+    "requirements.txt",
+    "alembic.ini",
+    "README.md",
+    "LICENSE",
+    ".env.example",
+]
 
 
 def _get_repo_context():
@@ -139,7 +155,6 @@ def cmd_doctor() -> None:
     table.add_column("وضعیت", style="bold")
     table.add_column("جزئیات", style="white")
 
-    # ۱. بررسی فایل .env و مجوز ۶۰۰
     env_path = Path(cfg.env_file_path or find_env_file())
     if env_path.is_file():
         mode = oct(env_path.stat().st_mode & 0o777)
@@ -152,14 +167,12 @@ def cmd_doctor() -> None:
     else:
         table.add_row("فایل تنظیمات (.env)", "[red]یافت نشد[/red]", str(env_path))
 
-    # ۲. بررسی کلیدهای رمزنگاری
     try:
         cfg.validate_secrets()
         table.add_row("کلیدهای امنیتی (HMAC/Fernet)", "[green]معتبر[/green]", "کلیدها ساختار صحیحی دارند.")
     except Exception as exc:
         table.add_row("کلیدهای امنیتی (HMAC/Fernet)", "[red]نامعتبر[/red]", str(exc))
 
-    # ۳. بررسی سرویس systemd
     try:
         res = subprocess.run(
             ["systemctl", "is-active", SERVICE_NAME], capture_output=True, text=True, check=False
@@ -173,7 +186,6 @@ def cmd_doctor() -> None:
     except FileNotFoundError:
         table.add_row("سرویس systemd", "[yellow]غیرفعال در محیط کانتینر[/yellow]", "systemctl یافت نشد.")
 
-    # ۴. بررسی اتصال دیتابیس
     async def _check_db_and_tg():
         db_ok = False
         db_detail = ""
@@ -212,7 +224,6 @@ def cmd_doctor() -> None:
         f"{tg_info} | پینگ: {latency:.0f}ms",
     )
 
-    # ۵. فضای دیسک
     usage = shutil.disk_usage("/")
     free_gb = usage.free / (1024**3)
     table.add_row(
@@ -707,12 +718,10 @@ def db_backup(
 
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
-        # ۱. افزودن فایل .env حاوی کلیدهای حیاتی HMAC_SECRET و FERNET_KEY
         env_path = Path(cfg.env_file_path or find_env_file())
         if env_path.is_file():
             tar.add(str(env_path), arcname="env.backup")
 
-        # ۲. افزودن متادیتای صریح کلیدها
         secrets_meta = json.dumps(
             {
                 "HMAC_SECRET": cfg.hmac_secret,
@@ -726,17 +735,13 @@ def db_backup(
         info.size = len(secrets_meta)
         tar.addfile(info, io.BytesIO(secrets_meta))
 
-        # ۳. افزودن دیتابیس (SQLite یا دامپ MySQL)
         if cfg.database_url.startswith("sqlite"):
             raw_db_path = cfg.database_url.split("///", 1)[-1]
             db_file = Path(raw_db_path).resolve()
             if db_file.is_file():
                 tar.add(str(db_file), arcname="anonbot.sqlite3")
         else:
-            # دامپ MySQL با mysqldump در صورت نصب بودن
             console.print("⏳ در حال تهیه دامپ از دیتابیس MySQL...")
-            # استخراج مشخصات اتصال از DATABASE_URL
-            # فرمت: mysql+aiomysql://user:pass@host:port/dbname
             clean = cfg.database_url.split("://", 1)[-1]
             creds, hostdb = clean.rsplit("@", 1)
             db_user, db_pass = creds.split(":", 1)
@@ -854,35 +859,99 @@ def db_auto_backup(
 
 
 # ==============================================================================
-# ۶. بروزرسانی، بازگشت به نسخه قبل و حذف (update, rollback, uninstall)
+# ۶. آپدیت مستقیم از گیت‌هاب (بدون git pull)، بازگشت به نسخه قبل و حذف
 # ==============================================================================
 @app.command("update")
-def cmd_update() -> None:
-    """دریافت آخرین تغییرات گیت، بک‌آپ نسخه فعلی برای Rollback، آپدیت پکیج‌ها، مایگریشن و ریستارت."""
+def cmd_update(
+    tarball_url: str = typer.Option(
+        GITHUB_TARBALL_URL,
+        "--url",
+        help="آدرس فایل فشرده آخرین نسخه گیت‌هاب (main.tar.gz)",
+    )
+) -> None:
+    """
+    دانلود مستقیم آخرین نسخه از گیت‌هاب (https://github.com/arimakomi/staranon) بدون git pull،
+    ذخیره اسنپ‌شات برای Rollback، جایگزینی فایل‌ها، آپدیت requirements، مایگریشن و ریستارت.
+    """
     project_root = Path(__file__).resolve().parent.parent
     cfg = load_settings()
     venv_pip = project_root / "venv" / "bin" / "pip"
-    pip_cmd = str(venv_pip) if venv_pip.is_file() else f"{sys.executable} -m pip"
+    pip_cmd = [str(venv_pip)] if venv_pip.is_file() else [sys.executable, "-m", "pip"]
 
-    # ذخیره Commit فعلی برای Rollback
-    head_res = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=str(project_root), capture_output=True, text=True, check=False
-    )
-    if head_res.returncode == 0:
-        (project_root / ".prev_commit").write_text(head_res.stdout.strip(), encoding="utf-8")
+    backup_dir = Path(cfg.backup_dir)
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        backup_dir = project_root / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
 
+    rollback_tar_path = backup_dir / "rollback_snapshot.tar.gz"
+
+    # ۱. تهیه اسنپ‌شات از کدهای فعلی برای Rollback
+    console.print("📸 در حال ذخیره اسنپ‌شات از نسخه فعلی برای قابلیت Rollback...")
+    with tarfile.open(str(rollback_tar_path), mode="w:gz") as r_tar:
+        for item_name in CODE_ITEMS_TO_SYNC:
+            item_path = project_root / item_name
+            if item_path.exists():
+                r_tar.add(str(item_path), arcname=item_name)
+
+    # ۲. دانلود مستقیم فایل فشرده آخرین نسخه برنچ main از گیت‌هاب با curl (بدون git pull)
     env = os.environ.copy()
+    curl_cmd = ["curl", "-fsSL", "--connect-timeout", "20", "--retry", "3"]
     if cfg.proxy_enabled and cfg.proxy_url:
         env["ALL_PROXY"] = cfg.proxy_url
         env["HTTPS_PROXY"] = cfg.proxy_url
         env["HTTP_PROXY"] = cfg.proxy_url
+        curl_cmd.extend(["-x", cfg.proxy_url])
 
-    console.print("⏳ در حال دریافت آخرین نسخه از مخزن گیت...")
-    subprocess.run(["git", "pull", "--ff-only"], cwd=str(project_root), env=env, check=False)
+    with tempfile.TemporaryDirectory(prefix="anonbot_update_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        archive_file = tmp_path / "main.tar.gz"
+        curl_cmd.extend(["-o", str(archive_file), tarball_url])
 
-    console.print("⏳ در حال به‌روزرسانی پکیج‌های پایتون داخل محیط مجازی...")
+        console.print(f"🌐 در حال دانلود مستقیم آخرین نسخه از گیت‌هاب ([cyan]{GITHUB_REPO}[/cyan])...")
+        dl_res = subprocess.run(curl_cmd, env=env, check=False)
+        if dl_res.returncode != 0 or not archive_file.is_file():
+            console.print("[bold red]❌ خطا در دانلود فایل فشرده از گیت‌هاب! وضعیت شبکه یا پروکسی را بررسی کنید.[/bold red]")
+            raise typer.Exit(1)
+
+        extract_dir = tmp_path / "extracted"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(str(archive_file), mode="r:gz") as tar:
+            tar.extractall(path=str(extract_dir))
+
+        # یافتن ریشه کد داخل آرشیو استخراج‌شده (چه در ریشه مخزن باشد چه داخل پوشه anonbot/)
+        subdirs = [d for d in extract_dir.iterdir() if d.is_dir()]
+        if not subdirs:
+            console.print("[bold red]❌ آرشیو دانلودشده از گیت‌هاب خالی یا نامعتبر است.[/bold red]")
+            raise typer.Exit(1)
+
+        repo_root = subdirs[0]
+        if (repo_root / "anonbot" / "requirements.txt").is_file() and (repo_root / "anonbot" / "app").is_dir():
+            source_root = repo_root / "anonbot"
+        elif (repo_root / "requirements.txt").is_file() and (repo_root / "app").is_dir():
+            source_root = repo_root
+        else:
+            console.print("[bold red]❌ ساختار فایل‌های ربات در آرشیو گیت‌هاب یافت نشد.[/bold red]")
+            raise typer.Exit(1)
+
+        console.print("📂 در حال جایگزینی فایل‌های نسخه جدید (با حفظ کامل دیتابیس، venv و کلیدهای .env)...")
+        for item_name in CODE_ITEMS_TO_SYNC:
+            src_item = source_root / item_name
+            dst_item = project_root / item_name
+            if not src_item.exists():
+                continue
+            if src_item.is_dir():
+                if dst_item.exists():
+                    shutil.rmtree(dst_item)
+                shutil.copytree(src_item, dst_item)
+            else:
+                shutil.copy2(src_item, dst_item)
+
+    # ۳. به‌روزرسانی پکیج‌های پایتون و اجرای مایگریشن‌ها
+    console.print("📦 در حال به‌روزرسانی وابستگی‌های پایتون داخل محیط مجازی...")
     subprocess.run(
-        pip_cmd.split() + ["install", "-r", str(project_root / "requirements.txt")],
+        pip_cmd + ["install", "-r", str(project_root / "requirements.txt")],
         cwd=str(project_root),
         env=env,
         check=False,
@@ -890,21 +959,35 @@ def cmd_update() -> None:
 
     db_migrate()
     restart_systemd_service_if_active(SERVICE_NAME)
-    console.print("[bold green]🎉 به‌روزرسانی ربات با موفقیت انجام شد و سرویس ریستارت گردید![/bold green]")
+    console.print(
+        f"[bold green]🎉 آپدیت مستقیم از گیت‌هاب ({GITHUB_REPO}) با موفقیت انجام شد و سرویس ریستارت گردید![/bold green]"
+    )
 
 
 @app.command("rollback")
 def cmd_rollback() -> None:
-    """بازگشت سریع به نسخه قبلی (Rollback) در صورت بروز مشکل پس از آپدیت."""
+    """بازگشت سریع به اسنپ‌شات نسخه قبلی (Rollback) در صورت بروز مشکل پس از آپدیت."""
     project_root = Path(__file__).resolve().parent.parent
-    prev_file = project_root / ".prev_commit"
-    if not prev_file.is_file():
-        console.print("[red]❌ هیچ نقطه بازگشتی (.prev_commit) یافت نشد.[/red]")
-        raise typer.Exit(1)
-    commit_hash = prev_file.read_text(encoding="utf-8").strip()
-    subprocess.run(["git", "reset", "--hard", commit_hash], cwd=str(project_root), check=False)
+    cfg = load_settings()
+    rollback_tar_path = Path(cfg.backup_dir) / "rollback_snapshot.tar.gz"
+    if not rollback_tar_path.is_file():
+        fallback = project_root / "backups" / "rollback_snapshot.tar.gz"
+        if fallback.is_file():
+            rollback_tar_path = fallback
+        else:
+            console.print("[red]❌ هیچ اسنپ‌شات بازگشتی (rollback_snapshot.tar.gz) یافت نشد.[/red]")
+            raise typer.Exit(1)
+
+    console.print("⏪ در حال بازیابی فایل‌های کد از اسنپ‌شات نسخه قبلی...")
+    with tarfile.open(str(rollback_tar_path), mode="r:gz") as r_tar:
+        for item_name in CODE_ITEMS_TO_SYNC:
+            dst_item = project_root / item_name
+            if dst_item.is_dir():
+                shutil.rmtree(dst_item, ignore_errors=True)
+        r_tar.extractall(path=str(project_root))
+
     restart_systemd_service_if_active(SERVICE_NAME)
-    console.print(f"[bold green]⏪ بازگشت به کامیت {commit_hash[:8]} انجام شد و سرویس ریستارت گردید.[/bold green]")
+    console.print("[bold green]✅ بازگشت به نسخه قبلی (Rollback) با موفقیت انجام شد و سرویس ریستارت گردید.[/bold green]")
 
 
 @app.command("uninstall")
@@ -941,7 +1024,7 @@ def interactive_menu() -> None:
                 "[bold cyan]6.[/bold cyan] 📊 مشاهده آمار زنده ربات\n"
                 "[bold cyan]7.[/bold cyan] 👥 مدیریت کاربران و صندوق‌های ناشناس\n"
                 "[bold cyan]8.[/bold cyan] 💾 بک‌آپ رمزنگاری‌شده (دیتابیس + کلیدها) و بازیابی\n"
-                "[bold cyan]9.[/bold cyan] 🚀 آپدیت ربات / حالت تعمیرات\n"
+                "[bold cyan]9.[/bold cyan] 🚀 آپدیت مستقیم از گیت‌هاب / Rollback / حالت تعمیرات\n"
                 "[bold cyan]0.[/bold cyan] 🚪 خروج",
                 title="🤖 پنل مدیریت خط فرمان AnonBot (منوی تعاملی)",
                 subtitle="یک عدد را وارد کنید",

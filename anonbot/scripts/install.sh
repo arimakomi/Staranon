@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # اسکریپت نصب خودکار و Idempotent ربات صندوق پیام ناشناس چندگانه (AnonBot)
+# مخزن رسمی گیت‌هاب: https://github.com/arimakomi/staranon
 # سازگار با Ubuntu 20.04 / 22.04 / 24.04 (رعایت کامل استاندارد PEP 668 با virtualenv)
 # پشتیبانی از دو حالت تعاملی (Interactive) و غیرتعاملی (Non-Interactive با فلگ‌ها)
 # ==============================================================================
@@ -11,6 +12,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+GITHUB_REPO="arimakomi/staranon"
+GITHUB_TARBALL_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/main.tar.gz"
 
 APP_USER="anonbot"
 APP_DIR="/opt/anonbot"
@@ -37,12 +41,12 @@ ARG_USE_INSTALL_PROXY="false"
 
 usage() {
     cat <<EOF
-نحوه استفاده از نصب‌کننده AnonBot:
+نحوه استفاده از نصب‌کننده AnonBot (${GITHUB_REPO}):
   حالت تعاملی:
-    sudo bash scripts/install.sh
+    sudo bash install.sh
 
   حالت غیرتعاملی:
-    sudo bash scripts/install.sh --non-interactive \\
+    sudo bash install.sh --non-interactive \\
       --token "123456:ABC-DEF" \\
       --admin-id "987654321" \\
       [--db-type sqlite|mysql] \\
@@ -79,6 +83,7 @@ done
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN}   🚀 نصب‌کننده خودکار ربات صندوق پیام ناشناس چندگانه (AnonBot)       ${NC}"
+echo -e "${CYAN}   📦 مخزن گیت‌هاب: https://github.com/${GITHUB_REPO}                 ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
 
 # ۱. بررسی دسترسی root و سیستم‌عامل Ubuntu
@@ -100,57 +105,57 @@ fi
 PROXY_ENABLED="false"
 if [[ "${NON_INTERACTIVE}" == "false" ]]; then
     echo ""
-    read -r -p "🌐 آیا برای اتصال ربات به تلگرام نیاز به پروکسی (SOCKS5 / HTTP) دارید؟ [y/N]: " yn_proxy
+    read -r -p "🌐 آیا برای اتصال ربات به تلگرام نیاز به پروکسی (SOCKS5 / HTTP) دارید؟ [y/N]: " yn_proxy < /dev/tty
     if [[ "${yn_proxy,,}" =~ ^(y|yes)$ ]]; then
-        read -r -p "🔗 آدرس پروکسی را وارد کنید (مثال: socks5://user:pass@127.0.0.1:1080): " ARG_PROXY_URL
+        read -r -p "🔗 آدرس پروکسی را وارد کنید (مثال: socks5://user:pass@127.0.0.1:1080): " ARG_PROXY_URL < /dev/tty
         PROXY_ENABLED="true"
-        read -r -p "📦 آیا هنگام دانلود پکیج‌های apt و pip نیز از همین پروکسی استفاده شود؟ [y/N]: " yn_inst_proxy
+        read -r -p "📦 آیا هنگام دانلود از گیت‌هاب، apt و pip نیز از همین پروکسی استفاده شود؟ [y/N]: " yn_inst_proxy < /dev/tty
         if [[ "${yn_inst_proxy,,}" =~ ^(y|yes)$ ]]; then
             ARG_USE_INSTALL_PROXY="true"
         fi
     fi
 
-    read -r -p "🌐 آدرس سرور Bot API سفارشی (اختیاری - برای پیش‌فرض تلگرام Enter بزنید): " ARG_API_BASE_URL
+    read -r -p "🌐 آدرس سرور Bot API سفارشی (اختیاری - برای پیش‌فرض تلگرام Enter بزنید): " ARG_API_BASE_URL < /dev/tty
 
     while [[ -z "${ARG_TOKEN}" ]]; do
-        read -r -p "🤖 توکن ربات تلگرام (دریافتی از @BotFather) را وارد کنید: " ARG_TOKEN
+        read -r -p "🤖 توکن ربات تلگرام (دریافتی از @BotFather) را وارد کنید: " ARG_TOKEN < /dev/tty
     done
 
     while [[ -z "${ARG_ADMIN_ID}" ]]; do
-        read -r -p "👑 آیدی عددی ادمین کل ربات (مثلاً 123456789) را وارد کنید: " ARG_ADMIN_ID
+        read -r -p "👑 آیدی عددی ادمین کل ربات (مثلاً 123456789) را وارد کنید: " ARG_ADMIN_ID < /dev/tty
     done
 
-    read -r -p "🗄 نوع دیتابیس را انتخاب کنید [1=SQLite پیش‌فرض, 2=MySQL]: " db_choice
+    read -r -p "🗄 نوع دیتابیس را انتخاب کنید [1=SQLite پیش‌فرض, 2=MySQL]: " db_choice < /dev/tty
     if [[ "${db_choice}" == "2" ]]; then
         ARG_DB_TYPE="mysql"
-        read -r -p "  هاست MySQL [127.0.0.1]: " m_host; m_host=${m_host:-127.0.0.1}
-        read -r -p "  پورت MySQL [3306]: " m_port; m_port=${m_port:-3306}
-        read -r -p "  نام دیتابیس [anonbot]: " m_db; m_db=${m_db:-anonbot}
-        read -r -p "  نام کاربری MySQL [anonbot]: " m_user; m_user=${m_user:-anonbot}
-        read -r -s -p "  رمز عبور MySQL: " m_pass; echo ""
+        read -r -p "  هاست MySQL [127.0.0.1]: " m_host < /dev/tty; m_host=${m_host:-127.0.0.1}
+        read -r -p "  پورت MySQL [3306]: " m_port < /dev/tty; m_port=${m_port:-3306}
+        read -r -p "  نام دیتابیس [anonbot]: " m_db < /dev/tty; m_db=${m_db:-anonbot}
+        read -r -p "  نام کاربری MySQL [anonbot]: " m_user < /dev/tty; m_user=${m_user:-anonbot}
+        read -r -s -p "  رمز عبور MySQL: " m_pass < /dev/tty; echo ""
         ARG_MYSQL_URL="mysql+aiomysql://${m_user}:${m_pass}@${m_host}:${m_port}/${m_db}?charset=utf8mb4"
     else
         ARG_DB_TYPE="sqlite"
     fi
 
-    read -r -p "⚡ آدرس Redis اختیاری (برای استفاده از حافظه/دیتابیس بدون Redis، کلید Enter را بزنید): " ARG_REDIS_URL
+    read -r -p "⚡ آدرس Redis اختیاری (برای استفاده از حافظه/دیتابیس بدون Redis، کلید Enter را بزنید): " ARG_REDIS_URL < /dev/tty
 
     if [[ "${PROXY_ENABLED}" == "true" ]]; then
         echo -e "${YELLOW}ℹ️ به دلیل فعال بودن پروکسی، حالت اجرای ربات روی Polling تنظیم شد.${NC}"
         ARG_RUN_MODE="polling"
     else
-        read -r -p "📡 حالت اجرای ربات [1=Polling پیش‌فرض, 2=Webhook]: " mode_choice
+        read -r -p "📡 حالت اجرای ربات [1=Polling پیش‌فرض, 2=Webhook]: " mode_choice < /dev/tty
         if [[ "${mode_choice}" == "2" ]]; then
             ARG_RUN_MODE="webhook"
-            read -r -p "  دامنه HTTPS وب‌هوک (مثال: https://bot.example.com): " ARG_WEBHOOK_HOST
-            read -r -p "  پورت محلی وب‌هوک [8080]: " ARG_WEBHOOK_PORT
+            read -r -p "  دامنه HTTPS وب‌هوک (مثال: https://bot.example.com): " ARG_WEBHOOK_HOST < /dev/tty
+            read -r -p "  پورت محلی وب‌هوک [8080]: " ARG_WEBHOOK_PORT < /dev/tty
             ARG_WEBHOOK_PORT=${ARG_WEBHOOK_PORT:-8080}
         else
             ARG_RUN_MODE="polling"
         fi
     fi
 
-    read -r -p "📢 یوزرنیم کانال جوین اجباری اولیه (اختیاری - مثلاً @mychannel یا Enter برای رد کردن): " ARG_FORCED_CHANNEL
+    read -r -p "📢 یوزرنیم کانال جوین اجباری اولیه (اختیاری - مثلاً @mychannel یا Enter برای رد کردن): " ARG_FORCED_CHANNEL < /dev/tty
 else
     if [[ -n "${ARG_PROXY_URL}" ]]; then
         PROXY_ENABLED="true"
@@ -161,19 +166,19 @@ else
     fi
 fi
 
-# ۳. اعمال پروکسی محیطی برای apt و pip در صورت درخواست کاربر
+# ۳. اعمال پروکسی محیطی برای apt، curl و pip در صورت درخواست کاربر
 if [[ "${ARG_USE_INSTALL_PROXY}" == "true" && -n "${ARG_PROXY_URL}" ]]; then
     export http_proxy="${ARG_PROXY_URL}"
     export https_proxy="${ARG_PROXY_URL}"
     export ALL_PROXY="${ARG_PROXY_URL}"
-    echo -e "${CYAN}🌐 پروکسی برای نصب پکیج‌ها فعال شد.${NC}"
+    echo -e "${CYAN}🌐 پروکسی برای دانلود پکیج‌ها فعال شد.${NC}"
 fi
 
 # ۴. نصب پکیج‌های سیستمی مورد نیاز
-echo -e "${CYAN}📦 در حال بررسی و نصب پیش‌نیازهای سیستمی (python3, venv, git, curl, sqlite3)...${NC}"
+echo -e "${CYAN}📦 در حال بررسی و نصب پیش‌نیازهای سیستمی (python3, venv, curl, sqlite3, tar)...${NC}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y python3 python3-venv python3-pip python3-dev build-essential git curl sqlite3 openssl tar ca-certificates
+apt-get install -y python3 python3-venv python3-pip python3-dev build-essential curl sqlite3 openssl tar ca-certificates
 
 # ۵. ساخت کاربر سیستمی و دایرکتوری‌ها (Idempotent)
 if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -183,15 +188,37 @@ fi
 
 mkdir -p "${APP_DIR}" "${ETC_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${BACKUP_DIR}"
 
-# کپی فایل‌های پروژه به /opt/anonbot
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_SRC="$(cd "${SCRIPT_DIR}/.." && pwd)"
-if [[ "${PROJECT_SRC}" != "${APP_DIR}" ]]; then
-    echo -e "${CYAN}📂 در حال کپی فایل‌های پروژه به ${APP_DIR}...${NC}"
-    cp -r "${PROJECT_SRC}/." "${APP_DIR}/"
+# ۶. تهیه سورس پروژه (از پوشه محلی یا دانلود مستقیم آرشیو main.tar.gz از گیت‌هاب arimakomi/staranon)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/tmp}")" 2>/dev/null && pwd || echo "/tmp")"
+PROJECT_SRC="$(cd "${SCRIPT_DIR}/.." 2>/dev/null && pwd || echo "/tmp")"
+
+if [[ -f "${PROJECT_SRC}/requirements.txt" && -d "${PROJECT_SRC}/app" ]]; then
+    if [[ "${PROJECT_SRC}" != "${APP_DIR}" ]]; then
+        echo -e "${CYAN}📂 در حال کپی فایل‌های پروژه از مسیر محلی به ${APP_DIR}...${NC}"
+        cp -r "${PROJECT_SRC}/." "${APP_DIR}/"
+    fi
+elif [[ -f "${PROJECT_SRC}/anonbot/requirements.txt" && -d "${PROJECT_SRC}/anonbot/app" ]]; then
+    echo -e "${CYAN}📂 در حال کپی فایل‌های پروژه از زیرپوشه anonbot به ${APP_DIR}...${NC}"
+    cp -r "${PROJECT_SRC}/anonbot/." "${APP_DIR}/"
+else
+    echo -e "${CYAN}🌐 در حال دانلود مستقیم آخرین نسخه از گیت‌هاب (${GITHUB_TARBALL_URL})...${NC}"
+    TMP_DL_DIR="$(mktemp -d /tmp/staranon_dl.XXXXXX)"
+    curl -fsSL "${GITHUB_TARBALL_URL}" -o "${TMP_DL_DIR}/main.tar.gz"
+    tar -xzf "${TMP_DL_DIR}/main.tar.gz" -C "${TMP_DL_DIR}"
+    EXTRACTED_ROOT="$(find "${TMP_DL_DIR}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [[ -f "${EXTRACTED_ROOT}/anonbot/requirements.txt" ]]; then
+        cp -r "${EXTRACTED_ROOT}/anonbot/." "${APP_DIR}/"
+    elif [[ -f "${EXTRACTED_ROOT}/requirements.txt" ]]; then
+        cp -r "${EXTRACTED_ROOT}/." "${APP_DIR}/"
+    else
+        echo -e "${RED}❌ خطا: فایل‌های پروژه در آرشیو گیت‌هاب یافت نشد.${NC}"
+        rm -rf "${TMP_DL_DIR}"
+        exit 1
+    fi
+    rm -rf "${TMP_DL_DIR}"
 fi
 
-# ۶. ساخت محیط مجازی پایتون (virtualenv) برای رعایت کامل PEP 668 در Ubuntu 24.04
+# ۷. ساخت محیط مجازی پایتون (virtualenv) برای رعایت کامل PEP 668 در Ubuntu 24.04
 if [[ ! -d "${APP_DIR}/venv" ]]; then
     echo -e "${CYAN}🐍 در حال ساخت محیط مجازی پایتون در ${APP_DIR}/venv...${NC}"
     python3 -m venv "${APP_DIR}/venv"
@@ -201,9 +228,9 @@ echo -e "${CYAN}📥 در حال نصب وابستگی‌های پایتون د�
 "${APP_DIR}/venv/bin/pip" install --upgrade pip wheel
 "${APP_DIR}/venv/bin/pip" install -r "${APP_DIR}/requirements.txt"
 
-# ۷. تست فوری اتصال به تلگرام (getMe) قبل از نهایی‌سازی
+# ۸. تست فوری اتصال به تلگرام (getMe) قبل از نهایی‌سازی
 echo -e "${CYAN}🔌 در حال تست اتصال به تلگرام (getMe)...${NC}"
-BOT_USERNAME_DETECTED=$("${APP_DIR}/venv/bin/python" - <<PYEOF
+BOT_USERNAME_DETECTED=$(PYTHONPATH="${APP_DIR}" "${APP_DIR}/venv/bin/python" - <<PYEOF
 import asyncio, sys
 from app.services.telegram_helpers import test_telegram_connection
 ok, info, latency = asyncio.run(
@@ -225,7 +252,7 @@ PYEOF
 }
 echo -e "${GREEN}✔ اتصال به تلگرام با موفقیت تایید شد: @${BOT_USERNAME_DETECTED}${NC}"
 
-# ۸. تولید یا حفظ کلیدهای امنیتی (Idempotent: اگر در .env قبلی وجود دارد حفظ شود!)
+# ۹. تولید یا حفظ کلیدهای امنیتی (Idempotent: اگر در .env قبلی وجود دارد حفظ شود!)
 EXISTING_HMAC=""
 EXISTING_FERNET=""
 EXISTING_WH_SECRET=""
@@ -237,7 +264,7 @@ fi
 
 if [[ -z "${EXISTING_HMAC}" || -z "${EXISTING_FERNET}" ]]; then
     echo -e "${CYAN}🔐 در حال تولید کلیدهای رمزنگاری امن (HMAC-SHA256 و Fernet)...${NC}"
-    KEYS_OUT=$("${APP_DIR}/venv/bin/python" -c "from app.utils.crypto import CryptoManager; h, f = CryptoManager.generate_new_secrets(); print(f'{h}|{f}')")
+    KEYS_OUT=$(PYTHONPATH="${APP_DIR}" "${APP_DIR}/venv/bin/python" -c "from app.utils.crypto import CryptoManager; h, f = CryptoManager.generate_new_secrets(); print(f'{h}|{f}')")
     EXISTING_HMAC="${KEYS_OUT%%|*}"
     EXISTING_FERNET="${KEYS_OUT##*|}"
 else
@@ -294,7 +321,7 @@ EOF
 chmod 600 "${ENV_FILE}"
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}" "${ETC_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${BACKUP_DIR}"
 
-# ۹. اجرای مایگریشن دیتابیس با Alembic
+# ۱۰. اجرای مایگریشن دیتابیس با Alembic
 echo -e "${CYAN}🗄 در حال اجرای مایگریشن‌های دیتابیس (Alembic)...${NC}"
 (
     cd "${APP_DIR}"
@@ -331,7 +358,7 @@ fi
 
 chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 
-# ۱۰. ساخت دستور سراسری /usr/local/bin/anonbot
+# ۱۱. ساخت دستور سراسری /usr/local/bin/anonbot
 cat > "${CLI_BIN}" <<'EOF'
 #!/usr/bin/env bash
 export ANONBOT_ENV_FILE="/etc/anonbot/.env"
@@ -340,7 +367,7 @@ exec /opt/anonbot/venv/bin/python /opt/anonbot/cli/main.py "$@"
 EOF
 chmod +x "${CLI_BIN}"
 
-# ۱۱. نصب و فعال‌سازی سرویس systemd
+# ۱۲. نصب و فعال‌سازی سرویس systemd
 cp "${APP_DIR}/systemd/anonbot.service" /etc/systemd/system/anonbot.service
 systemctl daemon-reload
 systemctl enable anonbot.service
