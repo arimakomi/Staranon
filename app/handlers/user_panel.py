@@ -91,23 +91,9 @@ async def _handle_deep_link_payload(
     )
 
 
-async def _build_welcome_with_personal_link(
-    bot: Bot,
-    db_user: User,
-    repo: BotRepository,
-) -> str:
-    inbox = await repo.get_or_create_personal_inbox(db_user)
-    me = await bot.get_me()
-    bot_username = me.username or "Bot"
-    code = inbox.custom_slug or f"ib_{inbox.token}"
-    personal_link = f"https://t.me/{bot_username}?start={code}"
-    return WELCOME_MAIN_TEXT.format(name=db_user.first_name, personal_link=personal_link)
-
-
 @router.message(CommandStart())
 async def cmd_start(
     message: Message,
-    bot: Bot,
     db_user: User,
     repo: BotRepository,
     state: FSMContext,
@@ -132,9 +118,8 @@ async def cmd_start(
         return
 
     await state.clear()
-    welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
     await message.answer(
-        welcome_txt,
+        WELCOME_MAIN_TEXT.format(name=db_user.first_name),
         parse_mode="HTML",
         reply_markup=build_main_reply_kb(is_super_admin),
     )
@@ -143,7 +128,6 @@ async def cmd_start(
 @router.callback_query(F.data.startswith("terms_ok:"))
 async def cb_accept_terms(
     callback: CallbackQuery,
-    bot: Bot,
     db_user: User,
     repo: BotRepository,
     state: FSMContext,
@@ -164,9 +148,8 @@ async def cb_accept_terms(
                 callback.message, payload, db_user, repo, state, is_super_admin
             )
         else:
-            welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
             await callback.message.answer(
-                welcome_txt,
+                WELCOME_MAIN_TEXT.format(name=db_user.first_name),
                 parse_mode="HTML",
                 reply_markup=build_main_reply_kb(is_super_admin),
             )
@@ -211,9 +194,8 @@ async def cb_check_forced_join(
                 callback.message, payload, db_user, repo, state, is_super_admin
             )
         else:
-            welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
             await callback.message.answer(
-                welcome_txt,
+                WELCOME_MAIN_TEXT.format(name=db_user.first_name),
                 parse_mode="HTML",
                 reply_markup=build_main_reply_kb(is_super_admin),
             )
