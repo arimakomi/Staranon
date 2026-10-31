@@ -73,6 +73,7 @@ class BotRepository:
                     user.ban_reason = None
         await self.session.commit()
         await self.session.refresh(user)
+        await self.get_or_create_personal_inbox(user)
         return user
 
     async def get_user(self, user_id: int) -> Optional[User]:
@@ -165,6 +166,24 @@ class BotRepository:
         await self.session.refresh(inbox)
         await self.log_inbox_action(inbox.id, owner_id, "create_inbox", f"ساخت صندوق «{inbox.title}»")
         return inbox
+
+    async def get_or_create_personal_inbox(self, user: User) -> Inbox:
+        stmt = (
+            select(Inbox)
+            .where(Inbox.owner_id == user.id, Inbox.type == "personal")
+            .order_by(Inbox.id.asc())
+            .limit(1)
+        )
+        res = await self.session.execute(stmt)
+        existing = res.scalar_one_or_none()
+        if existing is not None:
+            return existing
+        default_title = f"صندوق شخصی {user.first_name or 'من'}"[:128]
+        return await self.create_inbox(
+            owner_id=user.id,
+            inbox_type="personal",
+            title=default_title,
+        )
 
     async def get_inbox_by_id(self, inbox_id: int) -> Optional[Inbox]:
         res = await self.session.execute(select(Inbox).where(Inbox.id == inbox_id))
@@ -567,7 +586,33 @@ class BotRepository:
                 sender_uid = 0
             sender_user = await self.get_user(sender_uid) if sender_uid else None
             receiver_user = await self.get_user(inbox_rec.owner_id)
-            results.append((msg_rec, inbox_rec, sender_user, receiver_user, sender_uid))
+            results.append((msg_rec, inbox_rec, receiver_user, sender_user, sender_uid))
+
+        return results
+
+    async def get_recent_messages_global(
+        self,
+        limit: int = 50,
+    ) -> List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]]:
+        """واکشی آخرین پیام‌های رد و بدل شده در کل ربات برای مدیریت کل."""
+        stmt = (
+            select(MessageRecord, Inbox)
+            .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+            .order_by(MessageRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        rows = list(res.all())
+
+        results: List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]] = []
+        for msg_rec, inbox_rec in rows:
+            try:
+                sender_uid = self.crypto.decrypt_sender_id(msg_rec.sender_enc)
+            except Exception:
+                sender_uid = 0
+            sender_user = await self.get_user(sender_uid) if sender_uid else None
+            receiver_user = await self.get_user(inbox_rec.owner_id)
+            results.append((msg_rec, inbox_rec, receiver_user, sender_user, sender_uid))
 
         return results
 

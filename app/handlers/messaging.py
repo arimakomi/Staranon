@@ -114,6 +114,7 @@ async def handle_incoming_anonymous_message(
         emojis=settings.reaction_emojis,
         active_emoji=None,
         is_blocked=False,
+        clean_text=text_or_caption,
     )
 
     for admin_uid in recipients:
@@ -398,8 +399,59 @@ async def cb_admin_react_message(
                 emojis=emojis,
                 active_emoji=active_emoji,
                 is_blocked=is_blk,
+                clean_text=msg.message_text,
             )
         )
+
+
+@router.callback_query(F.data.startswith("m_fw:"))
+async def cb_admin_clean_forward_copy(
+    callback: CallbackQuery,
+    bot: Bot,
+    db_user: User,
+    repo: BotRepository,
+) -> None:
+    msg_id = int(callback.data.split(":")[1])
+    msg = await repo.get_message(msg_id)
+    if not msg or msg.is_deleted:
+        await callback.answer("این پیام یافت نشد یا حذف شده است.", show_alert=True)
+        return
+
+    if not await repo.check_inbox_permission(msg.inbox_id, db_user.id, "receive_messages"):
+        await callback.answer("عدم دسترسی به این صندوق.", show_alert=True)
+        return
+
+    if not callback.message:
+        await callback.answer()
+        return
+
+    copied_id = None
+    try:
+        sender_uid = repo.crypto.decrypt_sender_id(msg.sender_enc)
+        if sender_uid and msg.sender_tg_msg_id:
+            copied_id = await safe_copy_message(
+                bot=bot,
+                target_chat_id=callback.message.chat.id,
+                from_chat_id=sender_uid,
+                message_id=msg.sender_tg_msg_id,
+                reply_markup=None,
+            )
+    except Exception:
+        copied_id = None
+
+    if copied_id is None:
+        copied_id = await safe_copy_message(
+            bot=bot,
+            target_chat_id=callback.message.chat.id,
+            from_chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            reply_markup=None,
+        )
+
+    if copied_id is None and msg.message_text:
+        await callback.message.answer(msg.message_text)
+
+    await callback.answer("📤 نسخه تمیز و بدون دکمه پیام ارسال شد؛ اکنون می‌توانید آن را فوروارد کنید.")
 
 
 @router.callback_query(F.data.startswith("m_bl:"))
@@ -436,6 +488,7 @@ async def cb_admin_toggle_block_sender(
                 emojis=settings.reaction_emojis,
                 active_emoji=None,
                 is_blocked=new_blk,
+                clean_text=msg.message_text,
             )
         )
 

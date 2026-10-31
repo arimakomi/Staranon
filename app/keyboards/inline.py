@@ -32,8 +32,7 @@ from app.utils.crypto import CryptoManager
 
 def build_main_reply_kb(is_super_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
-        [KeyboardButton(text=BTN_MY_PERSONAL_LINK)],
-        [KeyboardButton(text=BTN_MY_INBOXES), KeyboardButton(text=BTN_CREATE_INBOX)],
+        [KeyboardButton(text=BTN_MY_PERSONAL_LINK), KeyboardButton(text=BTN_MY_INBOXES)],
         [KeyboardButton(text=BTN_MY_PROFILE), KeyboardButton(text=BTN_BLOCKLIST)],
         [KeyboardButton(text=BTN_PRIVACY_SETTINGS), KeyboardButton(text=BTN_HELP)],
     ]
@@ -87,8 +86,8 @@ def build_create_inbox_type_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="👤 صندوق شخصی", callback_data="ib_mk:personal")],
-            [InlineKeyboardButton(text="📢 صندوق کانال (نیازمند ادمین بودن)", callback_data="ib_mk:channel")],
-            [InlineKeyboardButton(text="👥 صندوق گروه (نیازمند ادمین بودن)", callback_data="ib_mk:group")],
+            [InlineKeyboardButton(text="📢 صندوق کانال", callback_data="ib_mk:channel")],
+            [InlineKeyboardButton(text="👥 صندوق گروه", callback_data="ib_mk:group")],
             [InlineKeyboardButton(text="🔙 بازگشت به صندوق‌های من", callback_data="ib_list")],
         ]
     )
@@ -240,11 +239,21 @@ def build_received_message_kb(
     emojis: List[str],
     active_emoji: Optional[str] = None,
     is_blocked: bool = False,
+    clean_text: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     emoji_row: List[InlineKeyboardButton] = []
     for idx, emj in enumerate(emojis[:5]):
         txt = f"[{emj}]" if active_emoji == emj else emj
         emoji_row.append(InlineKeyboardButton(text=txt, callback_data=f"m_rc:{msg_id}:{idx}"))
+
+    forward_row: List[InlineKeyboardButton] = [
+        InlineKeyboardButton(text="📤 نسخه تمیز جهت فوروارد", callback_data=f"m_fw:{msg_id}")
+    ]
+    if clean_text and clean_text.strip():
+        share_url = f"https://t.me/share/url?url=%20&text={quote(clean_text.strip()[:1500])}"
+        forward_row.append(
+            InlineKeyboardButton(text="↪️ فوروارد به چت/کانال", url=share_url)
+        )
 
     blk_text = "🔓 رفع بلاک فرستنده" if is_blocked else "🚫 بلاک فرستنده"
     rows: List[List[InlineKeyboardButton]] = [
@@ -252,6 +261,7 @@ def build_received_message_kb(
             InlineKeyboardButton(text="↩️ پاسخ ناشناس", callback_data=f"m_rp:{msg_id}"),
             InlineKeyboardButton(text="🪪 درخواست هویت", callback_data=f"m_rv:{msg_id}"),
         ],
+        forward_row,
         emoji_row,
         [
             InlineKeyboardButton(text=blk_text, callback_data=f"m_bl:{msg_id}"),
@@ -382,7 +392,8 @@ def build_super_admin_kb(maintenance_active: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🔍 جستجوی پیام در تمام صندوق‌ها", callback_data="adm_msg_search"),
+                InlineKeyboardButton(text="📩 ۵۰ پیام آخر ربات", callback_data="adm_last50"),
+                InlineKeyboardButton(text="🔍 جستجوی پیام در صندوق‌ها", callback_data="adm_msg_search"),
             ],
             [
                 InlineKeyboardButton(text="📊 آمار زنده ربات", callback_data="adm_stats"),

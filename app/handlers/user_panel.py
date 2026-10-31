@@ -91,9 +91,23 @@ async def _handle_deep_link_payload(
     )
 
 
+async def _build_welcome_with_personal_link(
+    bot: Bot,
+    db_user: User,
+    repo: BotRepository,
+) -> str:
+    inbox = await repo.get_or_create_personal_inbox(db_user)
+    me = await bot.get_me()
+    bot_username = me.username or "Bot"
+    code = inbox.custom_slug or f"ib_{inbox.token}"
+    personal_link = f"https://t.me/{bot_username}?start={code}"
+    return WELCOME_MAIN_TEXT.format(name=db_user.first_name, personal_link=personal_link)
+
+
 @router.message(CommandStart())
 async def cmd_start(
     message: Message,
+    bot: Bot,
     db_user: User,
     repo: BotRepository,
     state: FSMContext,
@@ -102,6 +116,8 @@ async def cmd_start(
     payload = ""
     if message.text and " " in message.text:
         payload = message.text.split(" ", 1)[1].strip()
+
+    await repo.get_or_create_personal_inbox(db_user)
 
     if not db_user.accepted_terms:
         await message.answer(
@@ -116,8 +132,9 @@ async def cmd_start(
         return
 
     await state.clear()
+    welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
     await message.answer(
-        WELCOME_MAIN_TEXT.format(name=db_user.first_name),
+        welcome_txt,
         parse_mode="HTML",
         reply_markup=build_main_reply_kb(is_super_admin),
     )
@@ -126,6 +143,7 @@ async def cmd_start(
 @router.callback_query(F.data.startswith("terms_ok:"))
 async def cb_accept_terms(
     callback: CallbackQuery,
+    bot: Bot,
     db_user: User,
     repo: BotRepository,
     state: FSMContext,
@@ -133,6 +151,7 @@ async def cb_accept_terms(
 ) -> None:
     await repo.accept_terms(db_user.id)
     db_user.accepted_terms = True
+    await repo.get_or_create_personal_inbox(db_user)
     payload = callback.data.split(":", 1)[1] if callback.data else ""
     await callback.answer("✅ قوانین تایید شد.")
     if callback.message:
@@ -145,8 +164,9 @@ async def cb_accept_terms(
                 callback.message, payload, db_user, repo, state, is_super_admin
             )
         else:
+            welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
             await callback.message.answer(
-                WELCOME_MAIN_TEXT.format(name=db_user.first_name),
+                welcome_txt,
                 parse_mode="HTML",
                 reply_markup=build_main_reply_kb(is_super_admin),
             )
@@ -171,6 +191,7 @@ async def cb_check_forced_join(
         except Exception:
             continue
 
+    await repo.get_or_create_personal_inbox(db_user)
     payload = callback.data.split(":", 1)[1] if callback.data else ""
     await callback.answer("✅ عضویت شما تایید شد!")
     if callback.message:
@@ -190,8 +211,9 @@ async def cb_check_forced_join(
                 callback.message, payload, db_user, repo, state, is_super_admin
             )
         else:
+            welcome_txt = await _build_welcome_with_personal_link(bot, db_user, repo)
             await callback.message.answer(
-                WELCOME_MAIN_TEXT.format(name=db_user.first_name),
+                welcome_txt,
                 parse_mode="HTML",
                 reply_markup=build_main_reply_kb(is_super_admin),
             )

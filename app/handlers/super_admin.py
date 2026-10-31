@@ -142,6 +142,69 @@ async def cmd_super_admin_panel(
     )
 
 
+@router.callback_query(F.data == "adm_last50")
+async def cb_admin_last_50_messages(
+    callback: CallbackQuery,
+    repo: BotRepository,
+    is_super_admin: bool,
+) -> None:
+    if not is_super_admin:
+        await callback.answer("عدم دسترسی.", show_alert=True)
+        return
+    await callback.answer("⏳ در حال دریافت ۵۰ پیام آخر...")
+    if not callback.message:
+        return
+
+    results = await repo.get_recent_messages_global(limit=50)
+    if not results:
+        await callback.message.answer("📭 هنوز هیچ پیامی در ربات رد و بدل نشده است.")
+        return
+
+    header = (
+        f"📩 <b>لیست {len(results)} پیام آخر رد و بدل شده در ربات:</b>\n"
+        "<i>(برای دریافت کپی اصل مدیا/پیام هر مورد، کافی است شماره آن مثلاً <code>#12</code> را در چت بفرستید)</i>\n"
+    )
+    chunks: list[str] = []
+    current_chunk = header
+
+    for idx, (msg_rec, inbox, owner_user, sender_user, sender_uid) in enumerate(results, start=1):
+        s_name = html.escape(sender_user.first_name or "بدون نام") if sender_user else "ناشناس"
+        s_uname = f"@{sender_user.username}" if (sender_user and sender_user.username) else "—"
+        s_id_str = str(sender_uid) if sender_uid else "نامشخص"
+
+        r_name = html.escape(owner_user.first_name or "بدون نام") if owner_user else "نامشخص"
+        r_uname = f"@{owner_user.username}" if (owner_user and owner_user.username) else "—"
+        r_id = owner_user.id if owner_user else (inbox.owner_id if inbox else 0)
+
+        inbox_title = html.escape(inbox.title) if inbox else f"صندوق #{msg_rec.inbox_id}"
+        media_lbl = MEDIA_FILTER_LABELS.get(msg_rec.media_type, msg_rec.media_type)
+        raw_txt = (msg_rec.message_text or "").strip()
+        if len(raw_txt) > 160:
+            raw_txt = raw_txt[:160] + "..."
+        msg_txt = html.escape(raw_txt) if raw_txt else f"<i>[{media_lbl} بدون متن]</i>"
+        ts = msg_rec.created_at.strftime("%m-%d %H:%M")
+
+        item_str = (
+            f"\n<b>{idx}. پیام</b> <code>#{msg_rec.id}</code> | 🕒 <code>{ts}</code> | {media_lbl}\n"
+            f"👤 <b>فرستنده:</b> {s_name} ({s_uname}) | آیدی: <code>{s_id_str}</code>\n"
+            f"🎯 <b>گیرنده:</b> {r_name} ({r_uname}) | آیدی: <code>{r_id}</code> | صندوق: <b>{inbox_title}</b>\n"
+            f"💬 <b>پیام:</b> {msg_txt}\n"
+            f"────────────────────"
+        )
+
+        if len(current_chunk) + len(item_str) > 3800:
+            chunks.append(current_chunk)
+            current_chunk = item_str.lstrip("\n")
+        else:
+            current_chunk += item_str
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    for chunk in chunks:
+        await callback.message.answer(chunk, parse_mode="HTML")
+
+
 @router.callback_query(F.data == "adm_msg_search")
 async def cb_admin_prompt_message_search(
     callback: CallbackQuery,
