@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# AnonBot Fast & Complete Installer (Ubuntu 20.04 / 22.04 / 24.04)
+# AnonBot Self-Healing Complete Installer (Ubuntu 20.04 / 22.04 / 24.04)
 # GitHub: https://github.com/arimakomi/staranon
-# One-Liner:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh)
+# One-Liner (with cache-buster):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh?t=$(date +%s)")
 # ==============================================================================
 set -euo pipefail
 
@@ -51,6 +51,7 @@ PROXY_ENABLED="false"; PROXY_URL="$CLI_PROXY_URL"; USE_PROXY_FOR_INSTALL="n"
 API_BASE_URL="$CLI_API_BASE_URL"; BOT_TOKEN="$CLI_TOKEN"; BOT_USERNAME=""
 SUPER_ADMINS="$CLI_ADMIN_ID"; DB_TYPE="$CLI_DB_TYPE"
 DATABASE_URL="sqlite+aiosqlite:///${VAR_DIR}/anonbot.db"
+M_HOST="127.0.0.1"; M_PORT="3306"; M_DB="anonbot"; M_USER="anonbot"; M_PASS=""
 REDIS_URL="$CLI_REDIS_URL"; RUN_MODE="$CLI_RUN_MODE"
 WEBHOOK_HOST="${CLI_WEBHOOK_HOST:-https://bot.example.com}"
 FORCE_CHANNEL="$CLI_FORCE_CHANNEL"
@@ -95,8 +96,7 @@ if [[ "$NON_INTERACTIVE" == false ]]; then
       read -r -p "   MySQL Port [3306]: " M_PORT < /dev/tty; M_PORT="${M_PORT:-3306}"
       read -r -p "   MySQL Database Name [anonbot]: " M_DB < /dev/tty; M_DB="${M_DB:-anonbot}"
       read -r -p "   MySQL Username [anonbot]: " M_USER < /dev/tty; M_USER="${M_USER:-anonbot}"
-      read -r -s -p "   MySQL Password: " M_PASS < /dev/tty; echo ""
-      DATABASE_URL="mysql+aiomysql://${M_USER}:${M_PASS}@${M_HOST}:${M_PORT}/${M_DB}?charset=utf8mb4"
+      read -r -s -p "   MySQL Password (leave empty to auto-generate on local MySQL): " M_PASS < /dev/tty; echo ""
     fi
     read -r -p "   Optional Redis URL (leave empty for memory/DB fallback): " REDIS_URL < /dev/tty
     read -r -p "   Custom Bot API Server URL (leave empty for default): " API_BASE_URL < /dev/tty
@@ -119,47 +119,119 @@ if [[ "${USE_PROXY_FOR_INSTALL,,}" == "y" && -n "$PROXY_URL" ]]; then
   export http_proxy="$PROXY_URL" https_proxy="$PROXY_URL" ALL_PROXY="$PROXY_URL"
 fi
 
-# 2. Install OS Packages & Prepare Directories
+# 2. Install OS Packages & Prepare Directories (Plus Auto-Provision Local MySQL if selected)
 echo -e "${YELLOW}[*] Installing system packages and preparing directories...${NC}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-dev build-essential curl tar sqlite3 openssl
+APT_PKGS=(python3 python3-venv python3-dev build-essential curl tar sqlite3 openssl)
+if [[ "$DB_TYPE" == "mysql" && ( "$M_HOST" == "127.0.0.1" || "$M_HOST" == "localhost" ) ]]; then
+  APT_PKGS+=(mysql-server)
+fi
+apt-get install -y -qq "${APT_PKGS[@]}"
+
+if [[ "$DB_TYPE" == "mysql" && -z "$CLI_MYSQL_DSN" ]]; then
+  if [[ -z "$M_PASS" ]]; then
+    M_PASS=$(openssl rand -hex 12)
+    echo -e "${CYAN}[*] Generated MySQL password for user '${M_USER}': ${M_PASS}${NC}"
+  fi
+  if [[ "$M_HOST" == "127.0.0.1" || "$M_HOST" == "localhost" ]]; then
+    echo -e "${YELLOW}[*] Configuring local MySQL database '${M_DB}' and user '${M_USER}'...${NC}"
+    systemctl enable --now mysql >/dev/null 2>&1 || true
+    mysql -u root <<SQL || true
+CREATE DATABASE IF NOT EXISTS \`${M_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${M_USER}'@'127.0.0.1' IDENTIFIED BY '${M_PASS}';
+CREATE USER IF NOT EXISTS '${M_USER}'@'localhost' IDENTIFIED BY '${M_PASS}';
+ALTER USER '${M_USER}'@'127.0.0.1' IDENTIFIED BY '${M_PASS}';
+ALTER USER '${M_USER}'@'localhost' IDENTIFIED BY '${M_PASS}';
+GRANT ALL PRIVILEGES ON \`${M_DB}\`.* TO '${M_USER}'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON \`${M_DB}\`.* TO '${M_USER}'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+  fi
+  DATABASE_URL="mysql+aiomysql://${M_USER}:${M_PASS}@${M_HOST}:${M_PORT}/${M_DB}?charset=utf8mb4"
+fi
 
 id "$APP_USER" &>/dev/null || useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "$APP_DIR" "$ETC_DIR" "$VAR_DIR" "$LOG_DIR" "$BACKUP_DIR"
 
-# 3. Fetch Application Source (Local directory or GitHub Tarball)
+# 3. Fetch Application Source (Local directory or GitHub Tarball) & Copy Safely
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR=""
-if [[ -f "${SCRIPT_DIR}/requirements.txt" && -d "${SCRIPT_DIR}/app" ]]; then
+if [[ -d "${SCRIPT_DIR}/app" ]]; then
   SOURCE_DIR="$SCRIPT_DIR"
-elif [[ -f "$(dirname "$SCRIPT_DIR")/requirements.txt" && -d "$(dirname "$SCRIPT_DIR")/app" ]]; then
+elif [[ -d "$(dirname "$SCRIPT_DIR")/app" ]]; then
   SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
 else
   echo -e "${YELLOW}[*] Downloading latest release from GitHub (${GITHUB_REPO})...${NC}"
   TMP_DL=$(mktemp -d)
   DL_ARGS=(-fsSL --max-time 60)
   [[ "${USE_PROXY_FOR_INSTALL,,}" == "y" && -n "$PROXY_URL" ]] && DL_ARGS+=(-x "$PROXY_URL")
-  if ! curl "${DL_ARGS[@]}" "${GITHUB_REPO}/archive/refs/heads/main.tar.gz" -o "${TMP_DL}/repo.tar.gz" 2>/dev/null; then
-    curl "${DL_ARGS[@]}" "${GITHUB_REPO}/archive/refs/heads/master.tar.gz" -o "${TMP_DL}/repo.tar.gz"
+  if ! curl "${DL_ARGS[@]}" "${GITHUB_REPO}/archive/refs/heads/main.tar.gz?t=$(date +%s)" -o "${TMP_DL}/repo.tar.gz" 2>/dev/null; then
+    curl "${DL_ARGS[@]}" "${GITHUB_REPO}/archive/refs/heads/master.tar.gz?t=$(date +%s)" -o "${TMP_DL}/repo.tar.gz"
   fi
   tar -xzf "${TMP_DL}/repo.tar.gz" -C "$TMP_DL"
   EXTRACTED=$(find "$TMP_DL" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-  if [[ -f "${EXTRACTED}/requirements.txt" ]]; then
+  if [[ -d "${EXTRACTED}/app" ]]; then
     SOURCE_DIR="$EXTRACTED"
-  elif [[ -f "${EXTRACTED}/anonbot/requirements.txt" ]]; then
+  elif [[ -d "${EXTRACTED}/anonbot/app" ]]; then
     SOURCE_DIR="${EXTRACTED}/anonbot"
   else
-    echo -e "${RED}[ERROR] Project files not found in downloaded GitHub archive.${NC}"
+    echo -e "${RED}[ERROR] Directory 'app/' not found in GitHub repository (${GITHUB_REPO}).${NC}"
     rm -rf "$TMP_DL"; exit 1
   fi
 fi
 
-cp -r "${SOURCE_DIR}/app" "${SOURCE_DIR}/cli" "${SOURCE_DIR}/alembic" "${SOURCE_DIR}/systemd" "${SOURCE_DIR}/scripts" "$APP_DIR/"
-cp "${SOURCE_DIR}/requirements.txt" "${SOURCE_DIR}/alembic.ini" "${SOURCE_DIR}/.env.example" "$APP_DIR/"
-[[ -f "${SOURCE_DIR}/install.sh" ]] && cp "${SOURCE_DIR}/install.sh" "$APP_DIR/"
-[[ -f "${SOURCE_DIR}/uninstall.sh" ]] && cp "${SOURCE_DIR}/uninstall.sh" "$APP_DIR/"
+# Copy all existing files/folders without failing on missing optional directories
+cp -a "${SOURCE_DIR}/." "$APP_DIR/"
 [[ -n "${TMP_DL:-}" && -d "${TMP_DL:-}" ]] && rm -rf "$TMP_DL"
+
+# Self-Heal: Generate requirements.txt if missing from repo
+if [[ ! -f "${APP_DIR}/requirements.txt" ]]; then
+  cat > "${APP_DIR}/requirements.txt" <<'REQEOF'
+aiogram>=3.13.1,<4.0.0
+aiohttp>=3.10.5,<4.0.0
+aiohttp-socks>=0.9.0,<1.0.0
+SQLAlchemy[asyncio]>=2.0.35,<3.0.0
+aiosqlite>=0.20.0,<1.0.0
+aiomysql>=0.2.0,<1.0.0
+cryptography>=43.0.1,<45.0.0
+alembic>=1.13.3,<2.0.0
+redis>=5.1.1,<6.0.0
+python-dotenv>=1.0.1,<2.0.0
+typer>=0.12.5,<1.0.0
+rich>=13.9.2,<14.0.0
+pydantic>=2.9.2,<3.0.0
+pytest>=8.3.3,<9.0.0
+pytest-asyncio>=0.24.0,<1.0.0
+REQEOF
+fi
+
+# Self-Heal: Generate systemd/anonbot.service if missing from repo
+mkdir -p "${APP_DIR}/systemd"
+cat > "${APP_DIR}/systemd/anonbot.service" <<EOF
+[Unit]
+Description=AnonBot Multi-Inbox Anonymous Telegram Bot
+After=network-online.target mysql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=${APP_DIR}
+Environment="ANONBOT_ENV_FILE=${ENV_FILE}"
+Environment="PYTHONPATH=${APP_DIR}"
+EnvironmentFile=${ENV_FILE}
+ExecStart=${VENV_DIR}/bin/python -m app.bot
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # 4. Create Isolated Virtualenv (PEP 668 compliant on Ubuntu 24.04)
 echo -e "${YELLOW}[*] Creating Python virtual environment and installing dependencies...${NC}"
@@ -213,21 +285,31 @@ EOF
 chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$ETC_DIR" "$VAR_DIR" "$LOG_DIR" "$BACKUP_DIR"
 chmod 600 "$ENV_FILE"
 
-# 6. Run Database Migrations & Seed Initial Force-Join Channel
-echo -e "${YELLOW}[*] Running Alembic database migrations...${NC}"
-(cd "$APP_DIR" && ANONBOT_ENV_FILE="$ENV_FILE" "${VENV_DIR}/bin/alembic" upgrade head)
+# 6. Initialize Database Tables & Seed Initial Force-Join Channel
+echo -e "${YELLOW}[*] Initializing database schema...${NC}"
+if [[ -d "${APP_DIR}/alembic" && -f "${APP_DIR}/alembic.ini" ]]; then
+  (cd "$APP_DIR" && ANONBOT_ENV_FILE="$ENV_FILE" "${VENV_DIR}/bin/alembic" upgrade head) || true
+fi
+ANONBOT_ENV_FILE="$ENV_FILE" PYTHONPATH="$APP_DIR" "${VENV_DIR}/bin/python" - <<'PYEOF'
+import asyncio
+from app.db.session import create_all_tables
+asyncio.run(create_all_tables())
+PYEOF
 chown -R "${APP_USER}:${APP_USER}" "$VAR_DIR"
 
 if [[ -n "$FORCE_CHANNEL" ]]; then
   ANONBOT_ENV_FILE="$ENV_FILE" PYTHONPATH="$APP_DIR" "${VENV_DIR}/bin/python" - "$FORCE_CHANNEL" <<'PYEOF'
 import asyncio, sys
+from sqlalchemy import select
 from app.db.session import get_session_factory
 from app.db.models import ForcedChannel
 async def main(ch):
     factory = get_session_factory()
     async with factory() as s:
-        s.add(ForcedChannel(chat_id=ch, title=ch, invite_link=f"https://t.me/{ch.lstrip('@')}", is_active=True))
-        await s.commit()
+        existing = (await s.execute(select(ForcedChannel).where(ForcedChannel.chat_id == ch))).scalar_one_or_none()
+        if not existing:
+            s.add(ForcedChannel(chat_id=ch, title=ch, invite_link=f"https://t.me/{ch.lstrip('@')}", is_active=True))
+            await s.commit()
 asyncio.run(main(sys.argv[1]))
 PYEOF
 fi

@@ -1,0 +1,22 @@
+[Unit]
+Description=AnonBot Multi-Inbox Anonymous Telegram Bot
+After=network-online.target mysql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anonbot
+Group=anonbot
+WorkingDirectory=/opt/anonbot
+Environment="ANONBOT_ENV_FILE=/etc/anonbot/.env"
+Environment="PYTHONPATH=/opt/anonbot"
+EnvironmentFile=/etc/anonbot/.env
+ExecStart=/opt/anonbot/venv/bin/python -m app.bot
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -58,11 +58,11 @@
 
 ## 🚀 راهنمای نصب سریع از گیت‌هاب (`arimakomi/staranon`)
 
-### ۱. نصب سریع با یک دستور کوتاه (کپی‌پیست کردنی)
+### ۱. نصب سریع با یک دستور کوتاه (کپی‌پیست کردنی - بدون کش گیت‌هاب)
 کافی است دستور کوتاه زیر را در ترمینال سرور اوبونتو خود اجرا کنید تا آخرین نسخه مستقیماً از گیت‌هاب دانلود و نصب شود:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh)
+bash <(curl -fsSL "https://raw.githubusercontent.com/arimakomi/staranon/main/install.sh?t=$(date +%s)")
 ```
 
 ### ۲. نصب غیرتعاملی (مناسب اتوماسیون)

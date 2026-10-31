@@ -575,14 +575,20 @@ def cmd_maintenance(state: str = typer.Argument(..., help="on or off")) -> None:
 # ==============================================================================
 @db_app.command("migrate")
 def db_migrate() -> None:
-    """Run Alembic database migrations (upgrade head)."""
+    """Run database migrations (Alembic if present + SQLAlchemy create_all_tables)."""
     alembic_ini = APP_DIR / "alembic.ini"
+    alembic_dir = APP_DIR / "alembic"
     cwd = APP_DIR if alembic_ini.exists() else Path.cwd()
-    res = subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=str(cwd), check=False)
-    if res.returncode == 0:
-        console.print("[green][OK] Database migrations applied successfully.[/green]")
-    else:
-        console.print("[red][ERROR] Failed to apply database migrations.[/red]")
+    if (cwd / "alembic.ini").exists() and (cwd / "alembic").is_dir():
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=str(cwd), check=False)
+    try:
+        from app.db.session import create_all_tables
+        cfg = load_settings()
+        init_db_engine(cfg.database_url)
+        asyncio.run(create_all_tables())
+        console.print("[green][OK] Database schema & migrations applied successfully.[/green]")
+    except Exception as exc:
+        console.print(f"[red][ERROR] Failed to apply database schema: {exc}[/red]")
         raise typer.Exit(1)
 
 
