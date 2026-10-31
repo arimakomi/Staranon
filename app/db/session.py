@@ -80,9 +80,22 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_all_tables() -> None:
+    from sqlalchemy import text
+
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Safe auto-upgrade for existing databases (adds message_text & media_type if missing)
+    for col_sql in (
+        "ALTER TABLE messages ADD COLUMN media_type VARCHAR(32) NOT NULL DEFAULT 'text'",
+        "ALTER TABLE messages ADD COLUMN message_text TEXT NULL",
+    ):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(col_sql))
+        except Exception:
+            pass
 
 
 async def close_db_engine() -> None:

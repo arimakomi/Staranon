@@ -1,6 +1,7 @@
 """هندلرهای مدیریت صندوق‌های ناشناس (ساخت، ویرایش، ریست لینک، فیلتر مدیا، Slug و مدیریت ادمین‌ها)."""
 
 from aiogram import Bot, F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -21,6 +22,7 @@ from app.keyboards.inline import (
 from app.locales.fa import (
     BTN_CREATE_INBOX,
     BTN_MY_INBOXES,
+    BTN_MY_PERSONAL_LINK,
     INBOX_TYPE_LABELS,
 )
 from app.services.telegram_helpers import (
@@ -58,18 +60,44 @@ def _format_inbox_summary(inbox: Inbox, bot_username: str, is_owner: bool) -> st
     )
 
 
+@router.message(F.text == BTN_MY_PERSONAL_LINK)
+@router.message(Command("link"))
+async def msg_my_personal_link(
+    message: Message,
+    bot: Bot,
+    db_user: User,
+    repo: BotRepository,
+) -> None:
+    inbox = await repo.get_or_create_personal_inbox(db_user)
+    bot_username = await _get_bot_username(bot)
+    is_owner = inbox.owner_id == db_user.id
+    can_edit = await repo.check_inbox_permission(inbox.id, db_user.id, "edit_welcome")
+    can_adm = await repo.check_inbox_permission(inbox.id, db_user.id, "manage_admins")
+    await message.answer(
+        _format_inbox_summary(inbox, bot_username, is_owner=is_owner),
+        parse_mode="HTML",
+        reply_markup=build_inbox_detail_kb(
+            inbox=inbox,
+            bot_username=bot_username,
+            can_edit_welcome=can_edit,
+            can_manage_admins=can_adm,
+            is_owner=is_owner,
+        ),
+    )
+
+
 @router.message(F.text == BTN_MY_INBOXES)
 async def msg_my_inboxes(message: Message, db_user: User, repo: BotRepository) -> None:
     inboxes = await repo.get_user_manageable_inboxes(db_user.id)
     if not inboxes:
         await message.answer(
             "📭 شما هنوز هیچ صندوق پیام ناشناسی نساخته‌اید.\n"
-            "با زدن دکمه زیر اولین صندوق خود را بسازید:",
+            "می‌توانید از دکمه «🔗 لینک ناشناس من» برای دریافت فوری لینک شخصی استفاده کنید، یا با دکمه‌های زیر صندوق جدید (شخصی، کانال یا گروه) بسازید:",
             reply_markup=build_create_inbox_type_kb(),
         )
         return
     await message.answer(
-        "📬 <b>لیست صندوق‌های ناشناس شما (مالک یا ادمین):</b>\n"
+        "📬 <b>لیست صندوق‌های ناشناس شما (شخصی، کانال و گروه):</b>\n"
         "برای مشاهده لینک، تنظیمات یا مدیریت ادمین‌ها، روی صندوق مورد نظر بزنید:",
         parse_mode="HTML",
         reply_markup=build_inboxes_list_kb(inboxes, db_user.id),

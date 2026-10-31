@@ -97,6 +97,8 @@ async def handle_incoming_anonymous_message(
         sender_tg_msg_id=message.message_id,
         delivered_tg_ids={},
         reply_to_record_id=reply_to_record_id,
+        message_text=text_or_caption,
+        media_type=media_type,
     )
 
     short_code = CryptoManager.short_hash(sender_hash)

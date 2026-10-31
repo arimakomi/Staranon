@@ -126,6 +126,8 @@ class MessageRecord(Base):
     sender_enc: Mapped[str] = mapped_column(Text, nullable=False)
     sender_tg_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     delivered_tg_ids: Mapped[Dict[str, int]] = mapped_column(JSON, default=dict, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(32), default="text", nullable=False)
+    message_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reply_to_record_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_replied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

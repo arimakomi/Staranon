@@ -40,3 +40,4 @@ class SuperAdminState(StatesGroup):
     waiting_forced_channel_link = State()
     waiting_user_search = State()
     waiting_ban_reason = State()
+    waiting_message_search = State()

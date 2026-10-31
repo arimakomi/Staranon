@@ -18,6 +18,7 @@ from app.locales.fa import (
     BTN_CREATE_INBOX,
     BTN_HELP,
     BTN_MY_INBOXES,
+    BTN_MY_PERSONAL_LINK,
     BTN_MY_PROFILE,
     BTN_PRIVACY_SETTINGS,
     BTN_SUPER_ADMIN,
@@ -31,6 +32,7 @@ from app.utils.crypto import CryptoManager
 
 def build_main_reply_kb(is_super_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
+        [KeyboardButton(text=BTN_MY_PERSONAL_LINK)],
         [KeyboardButton(text=BTN_MY_INBOXES), KeyboardButton(text=BTN_CREATE_INBOX)],
         [KeyboardButton(text=BTN_MY_PROFILE), KeyboardButton(text=BTN_BLOCKLIST)],
         [KeyboardButton(text=BTN_PRIVACY_SETTINGS), KeyboardButton(text=BTN_HELP)],
@@ -379,6 +381,9 @@ def build_super_admin_kb(maintenance_active: bool) -> InlineKeyboardMarkup:
     maint_lbl = "🟢 خروج از حالت تعمیرات" if maintenance_active else "🔧 فعال‌سازی حالت تعمیرات"
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔍 جستجوی پیام در تمام صندوق‌ها", callback_data="adm_msg_search"),
+            ],
             [
                 InlineKeyboardButton(text="📊 آمار زنده ربات", callback_data="adm_stats"),
                 InlineKeyboardButton(text="📣 ارسال پیام همگانی", callback_data="adm_bcast"),

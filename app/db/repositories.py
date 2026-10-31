@@ -484,6 +484,8 @@ class BotRepository:
         sender_tg_msg_id: int,
         delivered_tg_ids: Dict[str, int],
         reply_to_record_id: Optional[int] = None,
+        message_text: Optional[str] = None,
+        media_type: str = "text",
     ) -> MessageRecord:
         sender_hash = self.crypto.compute_sender_hash(inbox_id, sender_user_id)
         sender_enc = self.crypto.encrypt_sender_id(sender_user_id)
@@ -493,6 +495,8 @@ class BotRepository:
             sender_enc=sender_enc,
             sender_tg_msg_id=sender_tg_msg_id,
             delivered_tg_ids=delivered_tg_ids,
+            media_type=media_type,
+            message_text=message_text,
             reply_to_record_id=reply_to_record_id,
             is_deleted=False,
             is_replied=False,
@@ -506,6 +510,66 @@ class BotRepository:
         await self.session.commit()
         await self.session.refresh(rec)
         return rec
+
+    async def search_messages_global(
+        self,
+        query: str,
+        limit: int = 10,
+    ) -> List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]]:
+        """
+        جستجوی سراسری پیام در تمامی صندوق‌ها برای مدیریت کل:
+        بر اساس متن پیام، شماره رکورد پیام (#ID) یا شناسه پیام تلگرام،
+        همراه با رمزگشایی آیدی فرستنده و واکشی مشخصات فرستنده و گیرنده (صاحب صندوق).
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        conditions = []
+        numeric_q = q.lstrip("#")
+        if numeric_q.isdigit():
+            num_val = int(numeric_q)
+            conditions.append(MessageRecord.id == num_val)
+            conditions.append(MessageRecord.sender_tg_msg_id == num_val)
+
+        conditions.append(MessageRecord.message_text.ilike(f"%{q}%"))
+
+        stmt = (
+            select(MessageRecord, Inbox)
+            .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+            .where(or_(*conditions))
+            .order_by(MessageRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        rows = list(res.all())
+
+        # اگر کاربر عدد فرستاده و در ستون JSON delivered_tg_ids بود نیز بررسی شود
+        if not rows and numeric_q.isdigit():
+            recent_stmt = (
+                select(MessageRecord, Inbox)
+                .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+                .order_by(MessageRecord.id.desc())
+                .limit(200)
+            )
+            recent_res = await self.session.execute(recent_stmt)
+            target_num = int(numeric_q)
+            for m_rec, ib_rec in recent_res.all():
+                if target_num in (m_rec.delivered_tg_ids or {}).values():
+                    rows.append((m_rec, ib_rec))
+                    break
+
+        results: List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]] = []
+        for msg_rec, inbox_rec in rows:
+            try:
+                sender_uid = self.crypto.decrypt_sender_id(msg_rec.sender_enc)
+            except Exception:
+                sender_uid = 0
+            sender_user = await self.get_user(sender_uid) if sender_uid else None
+            receiver_user = await self.get_user(inbox_rec.owner_id)
+            results.append((msg_rec, inbox_rec, sender_user, receiver_user, sender_uid))
+
+        return results
 
     async def get_message(self, message_id: int) -> Optional[MessageRecord]:
         res = await self.session.execute(

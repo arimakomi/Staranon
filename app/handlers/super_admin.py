@@ -1,8 +1,9 @@
-"""هندلرهای پنل ادمین کل ربات (/admin): آمار، همگانی، جوین اجباری، مدیریت کاربر و تایید گزارش تخلف."""
+"""هندلرهای پنل ادمین کل ربات (/admin): آمار، همگانی، جوین اجباری، مدیریت کاربر، جستجوی سراسری پیام‌ها و تایید گزارش تخلف."""
 
 import asyncio
+import html
 from aiogram import Bot, F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -15,10 +16,110 @@ from app.keyboards.inline import (
     build_super_admin_kb,
     build_writing_cancel_kb,
 )
-from app.locales.fa import BTN_SUPER_ADMIN
+from app.locales.fa import (
+    BTN_BLOCKLIST,
+    BTN_CANCEL_WRITING,
+    BTN_CREATE_INBOX,
+    BTN_HELP,
+    BTN_MY_INBOXES,
+    BTN_MY_PERSONAL_LINK,
+    BTN_MY_PROFILE,
+    BTN_PRIVACY_SETTINGS,
+    BTN_SUPER_ADMIN,
+    MEDIA_FILTER_LABELS,
+)
 from app.services.broadcaster import execute_broadcast_job
+from app.services.telegram_helpers import safe_copy_message
 
 router = Router(name="super_admin")
+
+MAIN_MENU_BUTTONS = {
+    BTN_MY_PERSONAL_LINK,
+    BTN_MY_INBOXES,
+    BTN_CREATE_INBOX,
+    BTN_MY_PROFILE,
+    BTN_BLOCKLIST,
+    BTN_PRIVACY_SETTINGS,
+    BTN_HELP,
+    BTN_SUPER_ADMIN,
+    BTN_CANCEL_WRITING,
+}
+
+
+async def _send_global_message_search_results(
+    message: Message,
+    bot: Bot,
+    repo: BotRepository,
+    query: str,
+) -> None:
+    results = await repo.search_messages_global(query, limit=10)
+    if not results:
+        await message.answer(
+            f"🔍 هیچ پیامی منطبق با «<code>{html.escape(query[:80])}</code>» در هیچ‌کدام از صندوق‌ها یافت نشد.",
+            parse_mode="HTML",
+            reply_markup=build_main_reply_kb(True),
+        )
+        return
+
+    await message.answer(
+        f"🔍 <b>نتایج جستجو در تمام صندوق‌ها ({len(results)} مورد یافت شد):</b>",
+        parse_mode="HTML",
+        reply_markup=build_main_reply_kb(True),
+    )
+
+    for msg_rec, inbox, owner_user, sender_user, sender_uid in results:
+        if sender_user:
+            s_name = html.escape(sender_user.first_name or "بدون نام")
+            s_uname = f"@{sender_user.username}" if sender_user.username else "بدون یوزرنیم"
+        else:
+            s_name = "کاربر ناشناس"
+            s_uname = "—"
+
+        s_id_str = str(sender_uid) if sender_uid else "نامشخص"
+        s_link = f"<a href='tg://user?id={sender_uid}'>{s_name}</a>" if sender_uid else s_name
+
+        if owner_user:
+            r_name = html.escape(owner_user.first_name or "بدون نام")
+            r_uname = f"@{owner_user.username}" if owner_user.username else "بدون یوزرنیم"
+            r_id = owner_user.id
+        else:
+            r_name = "نامشخص"
+            r_uname = "—"
+            r_id = inbox.owner_id if inbox else 0
+
+        r_link = f"<a href='tg://user?id={r_id}'>{r_name}</a>" if r_id else r_name
+        inbox_title = html.escape(inbox.title) if inbox else f"صندوق #{msg_rec.inbox_id}"
+        media_lbl = MEDIA_FILTER_LABELS.get(msg_rec.media_type, msg_rec.media_type)
+        msg_txt = html.escape(msg_rec.message_text) if msg_rec.message_text else "<i>(بدون متن / فایل رسانه‌ای)</i>"
+        ts = msg_rec.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        del_badge = " (حذف‌شده از صندوق 🗑)" if msg_rec.is_deleted else ""
+
+        info_card = (
+            f"📄 <b>مشخصات پیام <code>#{msg_rec.id}</code>{del_badge}</b>\n"
+            f"🕒 زمان ارسال: <code>{ts}</code> | نوع: <b>{media_lbl}</b>\n"
+            f"────────────────────\n"
+            f"👤 <b>فرستنده پیام:</b>\n"
+            f"• نام: {s_link}\n"
+            f"• یوزرنیم: {s_uname}\n"
+            f"• آیدی عددی فرستنده: <code>{s_id_str}</code>\n"
+            f"────────────────────\n"
+            f"🎯 <b>گیرنده (صاحب صندوق):</b>\n"
+            f"• نام: {r_link}\n"
+            f"• یوزرنیم: {r_uname}\n"
+            f"• آیدی عددی گیرنده: <code>{r_id}</code>\n"
+            f"• صندوق: <b>{inbox_title}</b> (<code>#{msg_rec.inbox_id}</code>)\n"
+            f"────────────────────\n"
+            f"💬 <b>متن پیام:</b>\n{msg_txt}"
+        )
+        await message.answer(info_card, parse_mode="HTML")
+
+        if sender_uid and msg_rec.sender_tg_msg_id:
+            await safe_copy_message(
+                bot=bot,
+                target_chat_id=message.chat.id,
+                from_chat_id=sender_uid,
+                message_id=msg_rec.sender_tg_msg_id,
+            )
 
 
 @router.message(Command("admin"))
@@ -33,11 +134,78 @@ async def cmd_super_admin_panel(
     maint_db = await repo.get_setting("maintenance_mode", "0")
     maint_active = settings.maintenance_mode or (maint_db == "1")
     await message.answer(
-        "🛠 <b>پنل مدیریت کل ربات (Super Admin)</b>\n"
+        "🛠 <b>پنل مدیریت کل «بات ناشناس» (Super Admin)</b>\n\n"
+        "💡 <i>نکته: شما هر زمان پیامی را مستقیماً برای ربات بفرستید یا فوروارد کنید، ربات به صورت خودکار آن را در تمام صندوق‌ها جستجو کرده و مشخصات فرستنده و گیرنده را نمایش می‌دهد.</i>\n\n"
         "یکی از بخش‌های مدیریتی زیر را انتخاب کنید:",
         parse_mode="HTML",
         reply_markup=build_super_admin_kb(maint_active),
     )
+
+
+@router.callback_query(F.data == "adm_msg_search")
+async def cb_admin_prompt_message_search(
+    callback: CallbackQuery,
+    state: FSMContext,
+    is_super_admin: bool,
+) -> None:
+    if not is_super_admin:
+        await callback.answer("عدم دسترسی.", show_alert=True)
+        return
+    await state.set_state(SuperAdminState.waiting_message_search)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "🔍 <b>جستجوی سراسری پیام در تمام صندوق‌ها</b>\n\n"
+            "• <b>متن یا بخشی از متن پیام</b>، یا <b>شماره پیام</b> (مثلاً <code>#12</code> یا <code>12</code>) را بفرستید تا فرستنده (با آیدی)، گیرنده (با آیدی) و اصل پیام نمایش داده شود:",
+            parse_mode="HTML",
+            reply_markup=build_writing_cancel_kb(),
+        )
+
+
+@router.message(Command("search"))
+async def cmd_admin_search_message(
+    message: Message,
+    bot: Bot,
+    repo: BotRepository,
+    state: FSMContext,
+    is_super_admin: bool,
+) -> None:
+    if not is_super_admin:
+        return
+    parts = (message.text or "").split(" ", 1)
+    if len(parts) < 2 or not parts[1].strip():
+        await state.set_state(SuperAdminState.waiting_message_search)
+        await message.answer(
+            "🔍 متن پیام یا شماره پیام (مثلاً <code>#12</code>) را برای جستجو در تمام صندوق‌ها ارسال کنید:",
+            parse_mode="HTML",
+            reply_markup=build_writing_cancel_kb(),
+        )
+        return
+    await state.clear()
+    await _send_global_message_search_results(message, bot, repo, parts[1].strip())
+
+
+@router.message(SuperAdminState.waiting_message_search)
+async def msg_admin_execute_message_search(
+    message: Message,
+    bot: Bot,
+    repo: BotRepository,
+    state: FSMContext,
+    is_super_admin: bool,
+) -> None:
+    if not is_super_admin:
+        return
+    await state.clear()
+    query = (message.text or message.caption or "").strip()
+    if not query and message.forward_from_message_id:
+        query = str(message.forward_from_message_id)
+    if not query:
+        await message.answer(
+            "⚠️ لطفاً متن پیام یا شماره پیام را ارسال کنید.",
+            reply_markup=build_main_reply_kb(True),
+        )
+        return
+    await _send_global_message_search_results(message, bot, repo, query)
 
 
 @router.callback_query(F.data == "adm_stats")
@@ -51,7 +219,7 @@ async def cb_admin_live_stats(
         return
     stats = await repo.get_live_stats()
     text = (
-        "📊 <b>آمار زنده ربات صندوق ناشناس</b>\n\n"
+        "📊 <b>آمار زنده بات ناشناس</b>\n\n"
         f"👥 کل کاربران ثبت‌شده: <b>{stats['total_users']}</b>\n"
         f"🟢 کاربران فعال ۲۴ ساعت اخیر: <b>{stats['active_24h']}</b>\n"
         f"📬 کل صندوق‌های ساخته‌شده: <b>{stats['total_inboxes']}</b>\n"
@@ -377,3 +545,25 @@ async def cb_admin_validate_report(
                 callback.message.html_text + "\n\n❌ <b>رد شده (بی‌مورد)</b>",
                 parse_mode="HTML",
             )
+
+
+# ----------------------------------------------------------------------
+# جستجوی خودکار در تمام صندوق‌ها هنگام ارسال مستقیم پیام توسط مدیریت کل
+# ----------------------------------------------------------------------
+@router.message(StateFilter(None))
+async def msg_super_admin_direct_search_all_inboxes(
+    message: Message,
+    bot: Bot,
+    repo: BotRepository,
+    is_super_admin: bool,
+) -> None:
+    if not is_super_admin:
+        return
+    raw_text = (message.text or message.caption or "").strip()
+    if raw_text in MAIN_MENU_BUTTONS or raw_text.startswith("/"):
+        return
+    if not raw_text and message.forward_from_message_id:
+        raw_text = str(message.forward_from_message_id)
+    if not raw_text:
+        return
+    await _send_global_message_search_results(message, bot, repo, raw_text)

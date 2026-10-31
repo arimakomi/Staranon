@@ -68,10 +68,10 @@ async def run_bot() -> None:
     dp.message.outer_middleware(pipeline_mw)
     dp.callback_query.outer_middleware(pipeline_mw)
 
-    dp.include_router(super_admin.router)
     dp.include_router(user_panel.router)
     dp.include_router(inboxes.router)
     dp.include_router(messaging.router)
+    dp.include_router(super_admin.router)
 
     @dp.errors()
     async def global_error_handler(event: ErrorEvent) -> bool:
