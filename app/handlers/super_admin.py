@@ -24,6 +24,7 @@ from app.keyboards.inline import (
     build_writing_cancel_kb,
 )
 from app.locales.fa import (
+    BTN_ANON_TO_ID,
     BTN_BLOCKLIST,
     BTN_CANCEL_WRITING,
     BTN_CREATE_INBOX,
@@ -43,6 +44,7 @@ router = Router(name="super_admin")
 
 MAIN_MENU_BUTTONS = {
     BTN_MY_PERSONAL_LINK,
+    BTN_ANON_TO_ID,
     BTN_MY_INBOXES,
     BTN_CREATE_INBOX,
     BTN_MY_PROFILE,

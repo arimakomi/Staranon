@@ -86,10 +86,11 @@ async def create_all_tables() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Safe auto-upgrade for existing databases (adds message_text & media_type if missing)
+    # Safe auto-upgrade for existing databases (adds new columns if missing)
     for col_sql in (
         "ALTER TABLE messages ADD COLUMN media_type VARCHAR(32) NOT NULL DEFAULT 'text'",
         "ALTER TABLE messages ADD COLUMN message_text TEXT NULL",
+        "ALTER TABLE users ADD COLUMN allow_id_lookup BOOLEAN NOT NULL DEFAULT 1",
     ):
         try:
             async with engine.begin() as conn:

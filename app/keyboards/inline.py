@@ -12,6 +12,7 @@ from aiogram.types import (
 from app.db.models import BlockRecord, ForcedChannel, Inbox, InboxAdmin, SenderRevealPreference, User
 from app.locales.fa import (
     BTN_ACCEPT_TERMS,
+    BTN_ANON_TO_ID,
     BTN_BLOCKLIST,
     BTN_CANCEL_WRITING,
     BTN_CHECK_JOIN,
@@ -32,12 +33,13 @@ from app.utils.crypto import CryptoManager
 
 def build_main_reply_kb(is_super_admin: bool = False) -> ReplyKeyboardMarkup:
     rows = [
-        [KeyboardButton(text=BTN_MY_PERSONAL_LINK), KeyboardButton(text=BTN_MY_INBOXES)],
-        [KeyboardButton(text=BTN_MY_PROFILE), KeyboardButton(text=BTN_BLOCKLIST)],
-        [KeyboardButton(text=BTN_PRIVACY_SETTINGS), KeyboardButton(text=BTN_HELP)],
+        [KeyboardButton(text=BTN_MY_PERSONAL_LINK), KeyboardButton(text=BTN_ANON_TO_ID)],
+        [KeyboardButton(text=BTN_MY_INBOXES), KeyboardButton(text=BTN_MY_PROFILE)],
+        [KeyboardButton(text=BTN_BLOCKLIST), KeyboardButton(text=BTN_PRIVACY_SETTINGS)],
+        [KeyboardButton(text=BTN_HELP)],
     ]
     if is_super_admin:
-        rows.append([KeyboardButton(text=BTN_SUPER_ADMIN)])
+        rows[-1].append(KeyboardButton(text=BTN_SUPER_ADMIN))
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
@@ -365,7 +367,14 @@ def build_privacy_settings_kb(
         if user.allow_reveal_global
         else "🪪 دریافت درخواست نمایش هویت (کلی): خاموش ❌"
     )
+    id_lookup_allowed = getattr(user, "allow_id_lookup", True)
+    id_lookup_lbl = (
+        "📨 دریافت پیام از «ناشناس به آیدی»: روشن ✅"
+        if id_lookup_allowed
+        else "📨 دریافت پیام از «ناشناس به آیدی»: خاموش ❌"
+    )
     rows: List[List[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text=id_lookup_lbl, callback_data="prv_id_tg")],
         [InlineKeyboardButton(text=glob_lbl, callback_data="prv_glob_tg")],
         [
             InlineKeyboardButton(
@@ -385,6 +394,40 @@ def build_privacy_settings_kb(
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_anon_to_id_recent_kb(
+    recent_contacts: Sequence[Tuple[Inbox, Optional[User]]],
+) -> Optional[InlineKeyboardMarkup]:
+    if not recent_contacts:
+        return None
+    rows: List[List[InlineKeyboardButton]] = []
+    for ib, owner in recent_contacts[:8]:
+        owner_label = owner.first_name if owner else ib.title
+        uname_tag = f" (@{owner.username})" if (owner and owner.username) else ""
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"⭐️ ارسال مجدد به «{owner_label}{uname_tag}»",
+                    callback_data=f"s_again:{ib.id}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_invite_unregistered_user_kb(bot_username: str) -> InlineKeyboardMarkup:
+    bot_url = f"https://t.me/{bot_username}"
+    invite_text = quote(
+        "💌 یه پیام ناشناس برات دارم! روی لینک زیر بزن و ربات «بات ناشناس» رو استارت کن تا بتونم برات بفرستمش:\n"
+        f"{bot_url}"
+    )
+    share_url = f"https://t.me/share/url?url={quote(bot_url)}&text={invite_text}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📤 ارسال دعوت‌نامه به این کاربر", url=share_url)]
+        ]
+    )
 
 
 def build_super_admin_kb(maintenance_active: bool) -> InlineKeyboardMarkup:

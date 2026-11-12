@@ -17,6 +17,7 @@ class EditInboxState(StatesGroup):
 
 
 class WritingMessageState(StatesGroup):
+    waiting_recipient_id_or_username = State()
     waiting_anonymous_message = State()
     waiting_sender_followup = State()
 

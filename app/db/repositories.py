@@ -109,6 +109,54 @@ class BotRepository:
         await self.session.commit()
         return user.allow_reveal_global
 
+    async def toggle_user_id_lookup(self, user_id: int) -> bool:
+        user = await self.get_user(user_id)
+        if not user:
+            return True
+        current = getattr(user, "allow_id_lookup", True)
+        user.allow_id_lookup = not current
+        await self.session.commit()
+        return user.allow_id_lookup
+
+    async def get_recent_contacts_for_sender(
+        self,
+        sender_user_id: int,
+        limit: int = 8,
+    ) -> List[Tuple[Inbox, Optional[User]]]:
+        """لیست آخرین صندوق‌ها/افرادی که این کاربر قبلاً به آن‌ها پیام ناشناس فرستاده است."""
+        ib_res = await self.session.execute(
+            select(Inbox.id).where(Inbox.is_active == True)  # noqa: E712
+        )
+        all_inbox_ids = list(ib_res.scalars().all())
+        if not all_inbox_ids:
+            return []
+
+        possible_hashes = [
+            self.crypto.compute_sender_hash(ib_id, sender_user_id)
+            for ib_id in all_inbox_ids
+        ]
+        stmt = (
+            select(MessageRecord.inbox_id)
+            .where(MessageRecord.sender_hash.in_(possible_hashes))
+            .order_by(MessageRecord.id.desc())
+            .limit(40)
+        )
+        res = await self.session.execute(stmt)
+        seen_inbox_ids: list[int] = []
+        for (ib_id,) in res.all():
+            if ib_id not in seen_inbox_ids:
+                seen_inbox_ids.append(ib_id)
+                if len(seen_inbox_ids) >= limit:
+                    break
+
+        contacts: List[Tuple[Inbox, Optional[User]]] = []
+        for ib_id in seen_inbox_ids:
+            inbox = await self.get_inbox_by_id(ib_id)
+            if inbox and inbox.is_active:
+                owner = await self.get_user(inbox.owner_id)
+                contacts.append((inbox, owner))
+        return contacts
+
     async def ban_user(
         self,
         user_id: int,

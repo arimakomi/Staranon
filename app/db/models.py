@@ -45,6 +45,7 @@ class User(Base):
     alias_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     accepted_terms: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     allow_reveal_global: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allow_id_lookup: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     banned_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
