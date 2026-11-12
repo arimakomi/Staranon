@@ -396,18 +396,167 @@ def build_super_admin_kb(maintenance_active: bool) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔍 جستجوی پیام در صندوق‌ها", callback_data="adm_msg_search"),
             ],
             [
+                InlineKeyboardButton(text="👤 جستجو و کنترل کامل کاربر", callback_data="adm_usr"),
+                InlineKeyboardButton(text="👥 آخرین کاربران ربات", callback_data="adm_users_recent"),
+            ],
+            [
+                InlineKeyboardButton(text="📬 لیست تمام صندوق‌های ربات", callback_data="adm_inboxes_all"),
+                InlineKeyboardButton(text="🚨 گزارش‌های تخلف باز", callback_data="adm_reports_open"),
+            ],
+            [
                 InlineKeyboardButton(text="📊 آمار زنده ربات", callback_data="adm_stats"),
                 InlineKeyboardButton(text="📣 ارسال پیام همگانی", callback_data="adm_bcast"),
             ],
             [
                 InlineKeyboardButton(text="📢 کانال‌های جوین اجباری", callback_data="adm_fch"),
-                InlineKeyboardButton(text="👤 جستجو و مدیریت کاربر", callback_data="adm_usr"),
-            ],
-            [
                 InlineKeyboardButton(text=maint_lbl, callback_data="adm_maint_tg"),
             ],
         ]
     )
+
+
+def build_admin_user_control_kb(user: User, inboxes_count: int) -> InlineKeyboardMarkup:
+    ban_btn_txt = "🔓 رفع مسدودیت کاربر" if user.is_banned else "⛔ بن دائمی کاربر"
+    rows: List[List[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text=f"📬 مشاهده و مدیریت صندوق‌های کاربر ({inboxes_count})",
+                callback_data=f"adm_uib_list:{user.id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📤 ۵۰ پیام ارسالی این کاربر",
+                callback_data=f"adm_usent:{user.id}",
+            ),
+            InlineKeyboardButton(
+                text="📥 ۵۰ پیام دریافتی این کاربر",
+                callback_data=f"adm_urecv:{user.id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="✉️ ارسال پیام مستقیم به این کاربر",
+                callback_data=f"adm_udm:{user.id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(text=ban_btn_txt, callback_data=f"adm_ubn:{user.id}"),
+            InlineKeyboardButton(
+                text="⏳ بن موقت ۲۴ ساعته",
+                callback_data=f"adm_ubn24:{user.id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🧹 صفر کردن گزارش‌های تخلف",
+                callback_data=f"adm_urst_rep:{user.id}",
+            ),
+            InlineKeyboardButton(
+                text="🔄 بروزرسانی اطلاعات",
+                callback_data=f"adm_uview:{user.id}",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_admin_user_inboxes_kb(inboxes: Sequence[Inbox], owner_id: int) -> InlineKeyboardMarkup:
+    rows: List[List[InlineKeyboardButton]] = []
+    for ib in inboxes:
+        st_icon = "🟢" if ib.is_active else "🔴"
+        type_lbl = INBOX_TYPE_LABELS.get(ib.type, "👤")
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{st_icon} #{ib.id} {ib.title} ({type_lbl} | 📩 {ib.messages_count})",
+                    callback_data=f"adm_ib_ctrl:{ib.id}",
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 بازگشت به پنل کنترل کاربر",
+                callback_data=f"adm_uview:{owner_id}",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_admin_inbox_control_kb(inbox: Inbox) -> InlineKeyboardMarkup:
+    toggle_txt = "🔴 قطع (غیرفعال کردن) صندوق" if inbox.is_active else "🟢 وصل (فعال کردن) صندوق"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📥 مشاهده ۵۰ پیام آخر این صندوق",
+                    callback_data=f"adm_ib_msgs:{inbox.id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=toggle_txt,
+                    callback_data=f"adm_ib_tg:{inbox.id}",
+                ),
+                InlineKeyboardButton(
+                    text="🔄 ریست لینک صندوق",
+                    callback_data=f"adm_ib_rst:{inbox.id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑 حذف کامل این صندوق",
+                    callback_data=f"adm_ib_del:{inbox.id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 رفتن به پنل صاحب صندوق",
+                    callback_data=f"adm_uview:{inbox.owner_id}",
+                ),
+                InlineKeyboardButton(
+                    text="📬 صندوق‌های این کاربر",
+                    callback_data=f"adm_uib_list:{inbox.owner_id}",
+                ),
+            ],
+        ]
+    )
+
+
+def build_admin_recent_users_kb(users: Sequence[User]) -> InlineKeyboardMarkup:
+    rows: List[List[InlineKeyboardButton]] = []
+    for u in users:
+        st = "🔴" if u.is_banned else "🟢"
+        uname = f"@{u.username}" if u.username else str(u.id)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{st} {u.first_name} ({uname})",
+                    callback_data=f"adm_uview:{u.id}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_admin_all_inboxes_kb(
+    items: Sequence[Tuple[Inbox, Optional[User]]],
+) -> InlineKeyboardMarkup:
+    rows: List[List[InlineKeyboardButton]] = []
+    for ib, owner in items:
+        st = "🟢" if ib.is_active else "🔴"
+        owner_name = owner.first_name if owner else str(ib.owner_id)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{st} #{ib.id} «{ib.title}» | 👤 {owner_name} (📩 {ib.messages_count})",
+                    callback_data=f"adm_ib_ctrl:{ib.id}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_report_review_kb(report_id: int) -> InlineKeyboardMarkup:

@@ -41,3 +41,4 @@ class SuperAdminState(StatesGroup):
     waiting_user_search = State()
     waiting_ban_reason = State()
     waiting_message_search = State()
+    waiting_direct_message_to_user = State()

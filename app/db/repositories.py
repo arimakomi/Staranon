@@ -1075,3 +1075,167 @@ class BotRepository:
             "open_reports": open_reports,
             "banned_users": banned_users,
         }
+
+    # ------------------------------------------------------------------
+    # ابزارهای پیشرفته پنل مدیریت کل (Super Admin Pro Controls)
+    # ------------------------------------------------------------------
+    async def admin_list_recent_users(self, limit: int = 25) -> Sequence[User]:
+        stmt = select(User).order_by(User.last_active_at.desc()).limit(limit)
+        res = await self.session.execute(stmt)
+        return res.scalars().all()
+
+    async def admin_list_all_inboxes(self, limit: int = 30) -> List[Tuple[Inbox, Optional[User]]]:
+        stmt = (
+            select(Inbox, User)
+            .outerjoin(User, User.id == Inbox.owner_id)
+            .order_by(Inbox.messages_count.desc(), Inbox.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        return list(res.all())
+
+    async def admin_delete_inbox(self, inbox_id: int) -> Optional[int]:
+        inbox = await self.get_inbox_by_id(inbox_id)
+        if not inbox:
+            return None
+        owner_id = inbox.owner_id
+        await self.session.delete(inbox)
+        await self.session.commit()
+        return owner_id
+
+    async def admin_reset_user_reports(self, user_id: int) -> Optional[User]:
+        user = await self.get_user(user_id)
+        if not user:
+            return None
+        user.valid_reports_count = 0
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
+
+    async def get_inbox_messages_for_admin(
+        self,
+        inbox_id: int,
+        limit: int = 50,
+    ) -> List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]]:
+        stmt = (
+            select(MessageRecord, Inbox)
+            .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+            .where(MessageRecord.inbox_id == inbox_id)
+            .order_by(MessageRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        rows = list(res.all())
+
+        results: List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]] = []
+        for msg_rec, inbox_rec in rows:
+            try:
+                sender_uid = self.crypto.decrypt_sender_id(msg_rec.sender_enc)
+            except Exception:
+                sender_uid = 0
+            sender_user = await self.get_user(sender_uid) if sender_uid else None
+            receiver_user = await self.get_user(inbox_rec.owner_id)
+            results.append((msg_rec, inbox_rec, receiver_user, sender_user, sender_uid))
+        return results
+
+    async def get_user_received_messages_for_admin(
+        self,
+        owner_id: int,
+        limit: int = 50,
+    ) -> List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]]:
+        stmt = (
+            select(MessageRecord, Inbox)
+            .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+            .where(Inbox.owner_id == owner_id)
+            .order_by(MessageRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        rows = list(res.all())
+
+        receiver_user = await self.get_user(owner_id)
+        results: List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]] = []
+        for msg_rec, inbox_rec in rows:
+            try:
+                sender_uid = self.crypto.decrypt_sender_id(msg_rec.sender_enc)
+            except Exception:
+                sender_uid = 0
+            sender_user = await self.get_user(sender_uid) if sender_uid else None
+            results.append((msg_rec, inbox_rec, receiver_user, sender_user, sender_uid))
+        return results
+
+    async def get_user_sent_messages_for_admin(
+        self,
+        sender_user_id: int,
+        limit: int = 50,
+    ) -> List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]]:
+        ib_res = await self.session.execute(select(Inbox.id))
+        all_inbox_ids = list(ib_res.scalars().all())
+        if not all_inbox_ids:
+            return []
+
+        possible_hashes = [
+            self.crypto.compute_sender_hash(ib_id, sender_user_id)
+            for ib_id in all_inbox_ids
+        ]
+        stmt = (
+            select(MessageRecord, Inbox)
+            .join(Inbox, Inbox.id == MessageRecord.inbox_id)
+            .where(MessageRecord.sender_hash.in_(possible_hashes))
+            .order_by(MessageRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        rows = list(res.all())
+
+        sender_user = await self.get_user(sender_user_id)
+        results: List[Tuple[MessageRecord, Inbox, Optional[User], Optional[User], int]] = []
+        for msg_rec, inbox_rec in rows:
+            receiver_user = await self.get_user(inbox_rec.owner_id)
+            results.append((msg_rec, inbox_rec, receiver_user, sender_user, sender_user_id))
+        return results
+
+    async def get_user_sent_messages_count(self, sender_user_id: int) -> int:
+        ib_res = await self.session.execute(select(Inbox.id))
+        all_inbox_ids = list(ib_res.scalars().all())
+        if not all_inbox_ids:
+            return 0
+        possible_hashes = [
+            self.crypto.compute_sender_hash(ib_id, sender_user_id)
+            for ib_id in all_inbox_ids
+        ]
+        cnt_res = await self.session.execute(
+            select(func.count(MessageRecord.id)).where(
+                MessageRecord.sender_hash.in_(possible_hashes)
+            )
+        )
+        return cnt_res.scalar_one() or 0
+
+    async def list_open_reports_for_admin(
+        self,
+        limit: int = 15,
+    ) -> List[Tuple[ReportRecord, Optional[MessageRecord], Optional[Inbox], Optional[User], int]]:
+        stmt = (
+            select(ReportRecord)
+            .where(ReportRecord.status == "open")
+            .order_by(ReportRecord.id.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        reports = list(res.scalars().all())
+
+        items: List[Tuple[ReportRecord, Optional[MessageRecord], Optional[Inbox], Optional[User], int]] = []
+        for rep in reports:
+            msg = await self.get_message(rep.message_id)
+            inbox = await self.get_inbox_by_id(rep.inbox_id)
+            offender_uid = 0
+            offender_user = None
+            if msg:
+                try:
+                    offender_uid = self.crypto.decrypt_sender_id(msg.sender_enc)
+                    offender_user = await self.get_user(offender_uid)
+                except Exception:
+                    offender_uid = 0
+            items.append((rep, msg, inbox, offender_user, offender_uid))
+        return items
+
